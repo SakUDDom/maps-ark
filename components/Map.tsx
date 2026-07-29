@@ -4,7 +4,6 @@ import 'leaflet/dist/leaflet.css';
 import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css';
 import L from 'leaflet';
 import '@geoman-io/leaflet-geoman-free';
-// 🚀 ជួសជុល Import: បន្ថែម Map as MapIcon ដើម្បីកុំឱ្យជាន់ឈ្មោះជាមួយ Function Map()
 import { MapPin, Eraser, Hexagon, Scissors, RotateCw, Search, Slash, Move, ShieldAlert, LogIn, LogOut, User, PieChart, Ban, Save, X, Spline, Download, Map as MapIcon, Printer, History, Edit3, DollarSign, Clock, Camera, Road, Sliders, CheckCircle, RotateCcw, Home, XCircle, Wallet, CalendarDays, ChevronLeft, ChevronRight, List, Layers } from 'lucide-react';
 import { supabaseClient } from '../utils/supabase';
 
@@ -31,13 +30,10 @@ export default function Map() {
   const [allData, setAllData] = useState<any[]>([]);
 
   const [isToolsPanelOpen, setIsToolsPanelOpen] = useState(false);
-
   const [selectedHome, setSelectedHome] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState('');
   
-  const [editForm, setEditForm] = useState({ 
-    custom_id: '', customer_name: '', monthly_fee: 0, zone: '', status_color: 'yellow', payment_month: 'ខែមករា', photo_url: ''
-  });
+  const [editForm, setEditForm] = useState({ custom_id: '', customer_name: '', monthly_fee: 0, zone: '', status_color: 'yellow', payment_month: 'ខែមករា', photo_url: '' });
 
   const [roadEditData, setRoadEditData] = useState<any>(null);
   const [payMonth, setPayMonth] = useState('ខែមករា');
@@ -76,86 +72,93 @@ export default function Map() {
     checkSession();
   }, []);
 
+  // 🚀 ជំនួយការគូសផ្ទះ (អត់ចាំបាច់ Fetch ថ្មី)
+  const addHouseholdToMap = (h: any) => {
+    let layer: any;
+    let colorHex = h.status_color === 'blue' ? '#2563eb' : h.status_color === 'red' ? '#dc2626' : h.status_color === 'black' ? '#020617' : '#f59e0b';
+
+    if (h.shape_type === 'point' && h.lat && h.lng) {
+      layer = L.circleMarker([h.lat, h.lng], { radius: 8, fillColor: colorHex, color: '#ffffff', weight: 2, fillOpacity: 0.95, pane: 'pointsPane' });
+      if (pointsLayer.current) { layer.options.dbId = h.id; layer.options.dbType = 'household'; layer.addTo(pointsLayer.current); }
+    } 
+    else if (h.shape_type === 'polygon' && h.geojson) {
+      layer = L.geoJSON(h.geojson, { style: { color: '#ffffff', weight: 1.5, fillColor: colorHex, fillOpacity: 0.85 }, pane: 'polygonsPane' });
+      if (polygonsLayer.current) { layer.eachLayer((l: any) => { l.options.dbId = h.id; l.options.dbType = 'household'; }); layer.addTo(polygonsLayer.current); }
+    }
+
+    if (layer) {
+      layer.on('click', () => {
+        setSelectedHome(h); 
+        setEditForm({ custom_id: h.custom_id || '', customer_name: h.customer_name || '', monthly_fee: h.monthly_fee || 0, zone: h.zone || '', status_color: h.status_color || 'yellow', payment_month: h.payment_month || 'ខែមករា', photo_url: h.photo_url || '' }); 
+        setPayMonth(h.payment_month || 'ខែមករា'); 
+        setPayNumMonths(1);
+        setIsManualEditOpen(false); 
+      });
+    }
+  };
+
+  // 🚀 ជំនួយការគូសផ្លូវ (អត់ចាំបាច់ Fetch ថ្មី)
+  const addRoadToMap = (r: any) => {
+    if (r.geojson) {
+      let roadColor = '#10b981'; 
+      if(r.road_type === 'Land road') roadColor = '#ec5050';
+      if(r.road_type === 'Hight Ways road') roadColor = '#3b82f6';
+      if(r.road_type === 'Nation road') roadColor = '#16a34a';
+      if(r.road_type === 'Concrete road') roadColor = '#f6d91e';
+      if(r.road_type === 'Asphalt road') roadColor = '#e01ae3';
+
+      const layer = L.geoJSON(r.geojson, { style: { color: roadColor, weight: 6, opacity: 0.9 }, pane: 'roadsPane' }); 
+      layer.bindTooltip(`<div class="text-center"><b>${r.name || 'មិនមានឈ្មោះផ្លូវ'}</b><br><span class="text-xs text-slate-500">${r.road_type || 'Land road'} | ទំហំ: ${r.width || 'មិនបញ្ជាក់'}</span></div>`, {sticky: true, className: 'font-bold'});
+      layer.eachLayer((l: any) => { 
+        l.options.dbId = r.id; l.options.dbType = 'road'; 
+        l.on('dblclick', () => {
+          if(!currentUserRef.current) return;
+          setRoadEditData({ isNew: false, id: r.id, name: r.name || '', width: r.width || '', address: r.address || '', road_type: r.road_type || 'Land road' });
+        });
+      });
+      if(roadsLayer.current) layer.addTo(roadsLayer.current);
+    }
+  };
+
+  // 🚀 ជំនួយការគូសព្រំដែន (អត់ចាំបាច់ Fetch ថ្មី)
+  const addBorderToMap = (b: any) => {
+    if (b.geojson) {
+      const layer = L.geoJSON(b.geojson, { style: { color: '#ec4899', weight: 5, opacity: 0.8, dashArray: '8, 8', fillOpacity: 0.1 }, pane: 'bordersPane' }); 
+      layer.bindTooltip(`ព្រំដែនតំបន់៖ <b>${b.zone || 'មិនបញ្ជាក់'}</b>`, { sticky: true, className: 'font-bold text-sm bg-white px-2 py-1 shadow-md border border-slate-200 rounded' });
+      layer.eachLayer((l: any) => { 
+        l.options.dbId = b.id; l.options.dbType = 'border'; 
+        l.on('dblclick', async () => {
+          if(!currentUserRef.current) return;
+          const newZoneName = prompt("កែប្រែឈ្មោះតំបន់ (Zone) សម្រាប់ព្រំដែននេះ៖", b.zone);
+          if (newZoneName && newZoneName.trim() !== "" && newZoneName !== b.zone) {
+              await supabaseClient.from('zone_borders').update({ zone: newZoneName.trim() }).eq('id', b.id);
+              fetchAndRenderData(); // សម្រាប់ព្រំដែន បើកែឈ្មោះឱ្យវារត់មួយសារទៅចុះ ព្រោះកម្រកែ
+          }
+        });
+      });
+      if(bordersLayer.current) layer.addTo(bordersLayer.current);
+    }
+  };
+
+  // 🚀 ទាញទិន្នន័យ (ហៅតែម្តងគត់ពេល Login រួច ឬបើក Web) ដោយប្រើ Promise.all ឱ្យលឿនរន្ទះ
   const fetchAndRenderData = async () => {
     if (pointsLayer.current) pointsLayer.current.clearLayers();
     if (polygonsLayer.current) polygonsLayer.current.clearLayers();
     if (roadsLayer.current) roadsLayer.current.clearLayers();
     if (bordersLayer.current) bordersLayer.current.clearLayers();
 
-    const { data: households } = await supabaseClient.from('households').select('*');
-    if (households) {
-      setAllData(households);
-      households.forEach((h: any) => {
-        let layer: any;
-        let colorHex = h.status_color === 'blue' ? '#2563eb' : h.status_color === 'red' ? '#dc2626' : h.status_color === 'black' ? '#020617' : '#f59e0b';
+    const [householdsRes, roadsRes, bordersRes] = await Promise.all([
+      supabaseClient.from('households').select('*'),
+      supabaseClient.from('roads').select('*'),
+      supabaseClient.from('zone_borders').select('*')
+    ]);
 
-        if (h.shape_type === 'point' && h.lat && h.lng) {
-          layer = L.circleMarker([h.lat, h.lng], { radius: 8, fillColor: colorHex, color: '#ffffff', weight: 2, fillOpacity: 0.95, pane: 'pointsPane' });
-          if (layer && pointsLayer.current) { layer.options.dbId = h.id; layer.options.dbType = 'household'; layer.addTo(pointsLayer.current); }
-        } 
-        else if (h.shape_type === 'polygon' && h.geojson) {
-          layer = L.geoJSON(h.geojson, { style: { color: '#ffffff', weight: 1.5, fillColor: colorHex, fillOpacity: 0.85 }, pane: 'polygonsPane' });
-          if (layer && polygonsLayer.current) { layer.eachLayer((l: any) => { l.options.dbId = h.id; l.options.dbType = 'household'; }); layer.addTo(polygonsLayer.current); }
-        }
-
-        if (layer) {
-          layer.on('click', () => {
-            setSelectedHome(h); 
-            setEditForm({ custom_id: h.custom_id || '', customer_name: h.customer_name || '', monthly_fee: h.monthly_fee || 0, zone: h.zone || '', status_color: h.status_color || 'yellow', payment_month: h.payment_month || 'ខែមករា', photo_url: h.photo_url || '' }); 
-            setPayMonth(h.payment_month || 'ខែមករា'); 
-            setPayNumMonths(1);
-            setIsManualEditOpen(false); 
-          });
-        }
-      });
+    if (householdsRes.data) {
+      setAllData(householdsRes.data);
+      householdsRes.data.forEach(addHouseholdToMap);
     }
-
-    const { data: roads } = await supabaseClient.from('roads').select('*');
-    if (roads) {
-      roads.forEach((r: any) => {
-        if (r.geojson) {
-          let roadColor = '#10b981'; 
-          if(r.road_type === 'Land road') roadColor = '#ec5050';
-          if(r.road_type === 'Hight Ways road') roadColor = '#3b82f6';
-          if(r.road_type === 'Nation road') roadColor = '#16a34a';
-          if(r.road_type === 'Concrete road') roadColor = '#f6d91e';
-          if(r.road_type === 'Asphalt road') roadColor = '#e01ae3';
-
-          const layer = L.geoJSON(r.geojson, { style: { color: roadColor, weight: 6, opacity: 0.9 }, pane: 'roadsPane' }); 
-          layer.bindTooltip(`<div class="text-center"><b>${r.name || 'មិនមានឈ្មោះផ្លូវ'}</b><br><span class="text-xs text-slate-500">${r.road_type || 'Land road'} | ទំហំ: ${r.width || 'មិនបញ្ជាក់'}</span></div>`, {sticky: true, className: 'font-bold'});
-          layer.eachLayer((l: any) => { 
-            l.options.dbId = r.id; l.options.dbType = 'road'; 
-            l.on('dblclick', () => {
-              if(!currentUserRef.current) return;
-              setRoadEditData({ isNew: false, id: r.id, name: r.name || '', width: r.width || '', address: r.address || '', road_type: r.road_type || 'Land road' });
-            });
-          });
-          layer.addTo(roadsLayer.current!);
-        }
-      });
-    }
-
-    const { data: borders } = await supabaseClient.from('zone_borders').select('*');
-    if (borders) {
-      borders.forEach((b: any) => {
-        if (b.geojson) {
-          const layer = L.geoJSON(b.geojson, { style: { color: '#ec4899', weight: 5, opacity: 0.8, dashArray: '8, 8', fillOpacity: 0.1 }, pane: 'bordersPane' }); 
-          layer.bindTooltip(`ព្រំដែនតំបន់៖ <b>${b.zone || 'មិនបញ្ជាក់'}</b>`, { sticky: true, className: 'font-bold text-sm bg-white px-2 py-1 shadow-md border border-slate-200 rounded' });
-          layer.eachLayer((l: any) => { 
-            l.options.dbId = b.id; l.options.dbType = 'border'; 
-            l.on('dblclick', async () => {
-              if(!currentUserRef.current) return;
-              const newZoneName = prompt("កែប្រែឈ្មោះតំបន់ (Zone) សម្រាប់ព្រំដែននេះ៖", b.zone);
-              if (newZoneName && newZoneName.trim() !== "" && newZoneName !== b.zone) {
-                  await supabaseClient.from('zone_borders').update({ zone: newZoneName.trim() }).eq('id', b.id);
-                  fetchAndRenderData();
-              }
-            });
-          });
-          layer.addTo(bordersLayer.current!);
-        }
-      });
-    }
+    if (roadsRes.data) roadsRes.data.forEach(addRoadToMap);
+    if (bordersRes.data) bordersRes.data.forEach(addBorderToMap);
   };
 
   useEffect(() => {
@@ -189,6 +192,7 @@ export default function Map() {
 
       fetchAndRenderData();
 
+      // 🚀 ពេលគូសរួច Insert ចូល DB មួយបន្ទាត់ រួច Update Local ចោល (លែង Fetch ស៊ី Quota)
       mapInstance.current.on('pm:create', async (e: any) => {
         if (!currentUserRef.current) { alert('🔒 សូមចូលគណនី (Login) ជាមុនសិន។'); mapInstance.current?.removeLayer(e.layer); return; }
 
@@ -200,41 +204,48 @@ export default function Map() {
 
         if (shapeType === 'road') {
             setRoadEditData({ isNew: true, geojson: geojson, name: '', width: '', address: '', road_type: 'Land road' });
-            mapInstance.current?.removeLayer(e.layer);
+            mapInstance.current?.removeLayer(e.layer); // លុបផ្ទាំងគូសបណ្តោះអាសន្ន
             (mapInstance.current?.pm as any)?.disableDraw();
             return;
         } 
         else if (shapeType === 'border') {
             const zoneName = prompt("សូមបញ្ចូលឈ្មោះតំបន់ (Zone) សម្រាប់ព្រំដែននេះ៖");
-            if (!zoneName) { mapInstance.current?.removeLayer(e.layer); return; }
-            await supabaseClient.from('zone_borders').insert({ geojson: geojson, zone: zoneName });
+            mapInstance.current?.removeLayer(e.layer);
+            if (!zoneName) return; 
+            const { data } = await supabaseClient.from('zone_borders').insert({ geojson: geojson, zone: zoneName }).select().single();
+            if(data) addBorderToMap(data); // គូសព្រំដែនថ្មីលើផែនទីភ្លាមៗ
         } 
         else {
             let dbShape = shapeType === 'polygon' ? 'polygon' : 'point';
-            await supabaseClient.from('households').insert({ lat: center.lat, lng: center.lng, custom_id: customId, status_color: 'yellow', shape_type: dbShape, geojson: geojson, payment_month: 'ខែមករា', monthly_fee: 10000 });
+            mapInstance.current?.removeLayer(e.layer);
+            const { data } = await supabaseClient.from('households').insert({ lat: center.lat, lng: center.lng, custom_id: customId, status_color: 'yellow', shape_type: dbShape, geojson: geojson, payment_month: 'ខែមករា', monthly_fee: 10000 }).select().single();
+            
+            if(data) {
+                setAllData(prev => [...prev, data]); // Update របាយការណ៍បណ្តោះអាសន្ន
+                addHouseholdToMap(data); // គូសផ្ទះថ្មីលើផែនទីភ្លាមៗ
+            }
         }
-        
-        if (mapInstance.current) {
-          mapInstance.current.removeLayer(layer);
-          (mapInstance.current.pm as any)?.disableDraw();
-          fetchAndRenderData();
-        }
+        (mapInstance.current?.pm as any)?.disableDraw();
       });
 
+      // 🚀 ពេលលុប លុបក្នុង DB ចោល (Geoman វាលុបលើផែនទីស្រាប់ហើយ អត់ចាំបាច់ Fetch)
       mapInstance.current.on('pm:remove', async (e: any) => {
-        if (!currentUserRef.current) { alert('🔒 សូមចូលគណនីជាមុនសិន។'); fetchAndRenderData(); return; }
+        if (!currentUserRef.current) { alert('🔒 សូមចូលគណនីជាមុនសិន។'); return; }
         const id = e.layer.options.dbId;
         const dbType = e.layer.options.dbType;
+        if (!id) return;
         
         if (dbType === 'road') await supabaseClient.from('roads').delete().eq('id', id);
         else if (dbType === 'border') await supabaseClient.from('zone_borders').delete().eq('id', id);
         else await supabaseClient.from('households').delete().eq('id', id);
       });
 
+      // 🚀 ពេលអាប់ដេត Update ចូល DB (Geoman វា Move លើផែនទីស្រាប់ហើយ អត់ចាំបាច់ Fetch)
       mapInstance.current.on('pm:update', async (e: any) => {
-        if (!currentUserRef.current) { alert('🔒 សូមចូលគណនីជាមុនសិន។'); fetchAndRenderData(); return; }
+        if (!currentUserRef.current) { alert('🔒 សូមចូលគណនីជាមុនសិន។'); return; }
         const id = e.layer.options.dbId;
         const dbType = e.layer.options.dbType;
+        if (!id) return;
         const geojson = e.layer.toGeoJSON();
         
         if (dbType === 'road') await supabaseClient.from('roads').update({ geojson: geojson }).eq('id', id);
@@ -297,10 +308,7 @@ export default function Map() {
 
   const handleUpdate = async () => {
     if (!selectedHome || !selectedHome.id) return;
-    const { error } = await supabaseClient.from('households').update({ 
-      custom_id: editForm.custom_id, customer_name: editForm.customer_name, monthly_fee: editForm.monthly_fee, zone: editForm.zone, status_color: editForm.status_color, payment_month: editForm.payment_month
-    }).eq('id', selectedHome.id);
-    
+    const { error } = await supabaseClient.from('households').update({ custom_id: editForm.custom_id, customer_name: editForm.customer_name, monthly_fee: editForm.monthly_fee, zone: editForm.zone, status_color: editForm.status_color, payment_month: editForm.payment_month }).eq('id', selectedHome.id);
     if (!error) { 
       let colorHex = editForm.status_color === 'blue' ? '#2563eb' : editForm.status_color === 'red' ? '#dc2626' : editForm.status_color === 'black' ? '#020617' : '#f59e0b';
       updateMarkerColorLocally(selectedHome.id, colorHex);
@@ -323,7 +331,6 @@ export default function Map() {
         let targetYear = now.getFullYear();
         if (startIdx + i > 11) { targetYear += Math.floor((startIdx + i) / 12); }
         lastPaidMonthIndex = targetMonthIndex;
-        
         recordsToInsert.push({ household_id: selectedHome.id, custom_id: selectedHome.custom_id, customer_name: selectedHome.customer_name, amount: Number(selectedHome.monthly_fee) || 0, month: targetMonthNumber, year: targetYear, status: 'paid', zone: selectedHome.zone, collected_by: currentUserRef.current?.name || '', paid_at: now.toISOString() });
     }
 
@@ -332,7 +339,6 @@ export default function Map() {
 
     const nextMonthIdx = (lastPaidMonthIndex + 1) % 12;
     const nextMonthStr = monthsList[nextMonthIdx];
-
     const { error } = await supabaseClient.from('households').update({ status_color: 'blue', payment_month: nextMonthStr }).eq('id', selectedHome.id);
 
     if (!error) {
@@ -362,14 +368,21 @@ export default function Map() {
     handleOpenHistory(); 
   };
 
+  // 🚀 ជំនួយការរក្សាទុកផ្លូវដោយមិនបាច់ Fetch (Local Update)
   const saveRoadData = async () => {
       if (roadEditData.isNew) {
-          await supabaseClient.from('roads').insert({ geojson: roadEditData.geojson, name: roadEditData.name, width: roadEditData.width, address: roadEditData.address, road_type: roadEditData.road_type });
+          const { data } = await supabaseClient.from('roads').insert({ geojson: roadEditData.geojson, name: roadEditData.name, width: roadEditData.width, address: roadEditData.address, road_type: roadEditData.road_type }).select().single();
+          if (data) addRoadToMap(data); // គូសផ្លូវថ្មីភ្លាមៗ
           setRoadToggle(true);
       } else {
-          await supabaseClient.from('roads').update({ name: roadEditData.name, width: roadEditData.width, address: roadEditData.address, road_type: roadEditData.road_type }).eq('id', roadEditData.id);
+          const { data } = await supabaseClient.from('roads').update({ name: roadEditData.name, width: roadEditData.width, address: roadEditData.address, road_type: roadEditData.road_type }).eq('id', roadEditData.id).select().single();
+          if (data) {
+              // លុបផ្លូវចាស់ដែលនៅលើផែនទី រួចគូសផ្លូវថ្មីត្រួតពីលើ
+              roadsLayer.current?.eachLayer((l: any) => { if(l.options.dbId === roadEditData.id) roadsLayer.current?.removeLayer(l); });
+              addRoadToMap(data); 
+          }
       }
-      setRoadEditData(null); fetchAndRenderData();
+      setRoadEditData(null); 
   };
 
   const handleSearch = async () => {
@@ -493,13 +506,7 @@ export default function Map() {
 
       <div className={`flex-1 relative w-full h-full ${activeView === 'map' ? 'flex' : 'hidden'}`}>
         {!isToolsPanelOpen && (
-          <button 
-            onClick={() => setIsToolsPanelOpen(true)} 
-            className="absolute top-[80px] left-4 z-[1000] bg-white p-3.5 rounded-2xl shadow-xl border border-slate-200 hover:bg-slate-50 transition-all cursor-pointer text-indigo-600 flex items-center justify-center hover:scale-105"
-            title="បើកផ្ទាំងបញ្ជា"
-          >
-            <Layers size={22} />
-          </button>
+          <button onClick={() => setIsToolsPanelOpen(true)} className="absolute top-[80px] left-4 z-[1000] bg-white p-3.5 rounded-2xl shadow-xl border border-slate-200 hover:bg-slate-50 transition-all cursor-pointer text-indigo-600 flex items-center justify-center hover:scale-105" title="បើកផ្ទាំងបញ្ជា"><Layers size={22} /></button>
         )}
 
         <div className={`absolute top-[80px] left-4 z-[1050] w-[340px] flex flex-col gap-4 transition-all duration-300 transform ${isToolsPanelOpen ? 'translate-x-0 opacity-100 pointer-events-auto' : '-translate-x-[380px] opacity-0 pointer-events-none'} hide-scrollbar overflow-y-auto max-h-[calc(100vh-90px)] pb-6`}>
@@ -563,10 +570,7 @@ export default function Map() {
         <div className="flex-1 w-full h-full overflow-y-auto bg-slate-50 pt-[100px] p-6 lg:p-10 relative z-10">
           <div className="max-w-6xl mx-auto space-y-6">
             <div className="flex flex-col md:flex-row justify-between items-end gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-              <div>
-                <h2 className="text-2xl font-bold text-slate-800">របាយការណ៍ទូទៅ</h2>
-                <p className="text-sm text-slate-500 mt-1">ទិន្នន័យស្ថិតិ និងការគ្រប់គ្រង</p>
-              </div>
+              <div><h2 className="text-2xl font-bold text-slate-800">របាយការណ៍ទូទៅ</h2><p className="text-sm text-slate-500 mt-1">ទិន្នន័យស្ថិតិ និងការគ្រប់គ្រង</p></div>
               <div className="flex gap-2 flex-wrap items-center">
                 {currentUser?.role === 'super_admin' && (
                   <select value={reportZone} onChange={e => setReportZone(e.target.value)} className="px-4 py-2 border rounded-lg text-sm bg-indigo-50 font-bold text-indigo-700 outline-none shadow-sm border-indigo-200 cursor-pointer">
@@ -589,40 +593,20 @@ export default function Map() {
                     </select>
                   </>
                 )}
-                <button onClick={handleExportCSV} className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-4 py-2 rounded-lg text-sm font-bold hover:bg-emerald-100 shadow-sm flex items-center cursor-pointer">
-                  <Download size={16} className="mr-1" /> ទាញយក CSV
-                </button>
+                <button onClick={handleExportCSV} className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-4 py-2 rounded-lg text-sm font-bold hover:bg-emerald-100 shadow-sm flex items-center cursor-pointer"><Download size={16} className="mr-1" /> ទាញយក CSV</button>
               </div>
             </div>
 
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between">
-                <div className="flex justify-between items-start mb-2"><span className="text-sm font-bold text-slate-500">ផ្ទះសរុប</span><div className="p-2 bg-indigo-50 rounded-lg text-indigo-500"><Home size={20}/></div></div>
-                <div className="text-3xl font-black text-slate-800">{totalHouses}</div>
-              </div>
-              <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between">
-                <div className="flex justify-between items-start mb-2"><span className="text-sm font-bold text-slate-500">បានបង់</span><div className="p-2 bg-emerald-50 rounded-lg text-emerald-500"><CheckCircle size={20}/></div></div>
-                <div className="text-3xl font-black text-emerald-600">{paidHouses}</div>
-              </div>
-              <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between">
-                <div className="flex justify-between items-start mb-2"><span className="text-sm font-bold text-slate-500">រង់ចាំបង់</span><div className="p-2 bg-amber-50 rounded-lg text-amber-500"><Clock size={20}/></div></div>
-                <div className="text-3xl font-black text-amber-500">{pendingHouses}</div>
-              </div>
-              <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between">
-                <div className="flex justify-between items-start mb-2"><span className="text-sm font-bold text-slate-500">បិទ</span><div className="p-2 bg-rose-50 rounded-lg text-rose-500"><XCircle size={20}/></div></div>
-                <div className="text-3xl font-black text-rose-600">{closedHouses}</div>
-              </div>
+              <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between"><div className="flex justify-between items-start mb-2"><span className="text-sm font-bold text-slate-500">ផ្ទះសរុប</span><div className="p-2 bg-indigo-50 rounded-lg text-indigo-500"><Home size={20}/></div></div><div className="text-3xl font-black text-slate-800">{totalHouses}</div></div>
+              <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between"><div className="flex justify-between items-start mb-2"><span className="text-sm font-bold text-slate-500">បានបង់</span><div className="p-2 bg-emerald-50 rounded-lg text-emerald-500"><CheckCircle size={20}/></div></div><div className="text-3xl font-black text-emerald-600">{paidHouses}</div></div>
+              <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between"><div className="flex justify-between items-start mb-2"><span className="text-sm font-bold text-slate-500">រង់ចាំបង់</span><div className="p-2 bg-amber-50 rounded-lg text-amber-500"><Clock size={20}/></div></div><div className="text-3xl font-black text-amber-500">{pendingHouses}</div></div>
+              <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between"><div className="flex justify-between items-start mb-2"><span className="text-sm font-bold text-slate-500">បិទ</span><div className="p-2 bg-rose-50 rounded-lg text-rose-500"><XCircle size={20}/></div></div><div className="text-3xl font-black text-rose-600">{closedHouses}</div></div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-                <div className="flex justify-between items-center mb-4"><h3 className="font-bold text-slate-800">ចំណូលប្រចាំខែនេះ</h3><div className="p-2 bg-emerald-50 rounded-lg text-emerald-500"><Wallet size={24}/></div></div>
-                <div className="text-4xl font-black text-emerald-600">{monthlyRevenue.toLocaleString()} ៛</div>
-              </div>
-              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 border-l-4 border-l-indigo-500">
-                <div className="flex justify-between items-center mb-4"><h3 className="font-bold text-slate-800">ចំណូលប្រចាំថ្ងៃនេះ (Today)</h3><div className="p-2 bg-indigo-50 rounded-lg text-indigo-500"><CalendarDays size={24}/></div></div>
-                <div className="text-4xl font-black text-indigo-600">{dailyRevenue.toLocaleString()} ៛</div>
-              </div>
+              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100"><div className="flex justify-between items-center mb-4"><h3 className="font-bold text-slate-800">ចំណូលប្រចាំខែនេះ</h3><div className="p-2 bg-emerald-50 rounded-lg text-emerald-500"><Wallet size={24}/></div></div><div className="text-4xl font-black text-emerald-600">{monthlyRevenue.toLocaleString()} ៛</div></div>
+              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 border-l-4 border-l-indigo-500"><div className="flex justify-between items-center mb-4"><h3 className="font-bold text-slate-800">ចំណូលប្រចាំថ្ងៃនេះ (Today)</h3><div className="p-2 bg-indigo-50 rounded-lg text-indigo-500"><CalendarDays size={24}/></div></div><div className="text-4xl font-black text-indigo-600">{dailyRevenue.toLocaleString()} ៛</div></div>
             </div>
 
             <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
@@ -677,123 +661,45 @@ export default function Map() {
             <h3 className="font-black text-indigo-900 text-sm flex items-center gap-2"><User size={18} className="text-indigo-600"/> ព័ត៌មានអតិថិជន</h3>
             <button onClick={() => setSelectedHome(null)} className="text-slate-400 hover:text-rose-500 cursor-pointer"><X size={20} /></button>
           </div>
-          
           <div className="p-5 flex flex-col gap-4 overflow-y-auto hide-scrollbar bg-white pb-10">
-            <div className="flex flex-col gap-1">
-              <span className="text-[11px] text-slate-700 font-bold flex items-center gap-1"><Camera size={14}/> រូបថត៖</span>
-              <div className="w-full h-32 bg-slate-100 rounded-lg overflow-hidden border border-slate-200 flex items-center justify-center">
-                {editForm.photo_url ? ( <img src={editForm.photo_url} className="w-full h-full object-cover" alt="Customer" /> ) : ( <span className="text-slate-400 text-xs font-bold">គ្មានរូបថត</span> )}
-              </div>
-            </div>
-
+            <div className="flex flex-col gap-1"><span className="text-[11px] text-slate-700 font-bold flex items-center gap-1"><Camera size={14}/> រូបថត៖</span><div className="w-full h-32 bg-slate-100 rounded-lg overflow-hidden border border-slate-200 flex items-center justify-center">{editForm.photo_url ? ( <img src={editForm.photo_url} className="w-full h-full object-cover" alt="Customer" /> ) : ( <span className="text-slate-400 text-xs font-bold">គ្មានរូបថត</span> )}</div></div>
             <div className="flex flex-col gap-1.5"><span className="text-[11px] text-slate-700 font-bold">លេខកូដផ្ទះ៖</span><input type="text" value={editForm.custom_id} onChange={(e) => setEditForm({...editForm, custom_id: e.target.value})} className="w-full px-3 py-2.5 text-sm font-bold text-slate-800 bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-500 transition-colors" /></div>
             <div className="flex flex-col gap-1.5"><span className="text-[11px] text-slate-700 font-bold">ឈ្មោះអតិថិជន (ម្ចាស់ហាង/សំអាង)៖</span><input type="text" value={editForm.customer_name} onChange={(e) => setEditForm({...editForm, customer_name: e.target.value})} className="w-full px-3 py-2.5 text-sm font-bold text-slate-800 bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-500 transition-colors" /></div>
             <div className="flex flex-col gap-1.5"><span className="text-[11px] text-slate-700 font-bold">តម្លៃសេវា (៛)៖</span><input type="number" value={editForm.monthly_fee} onChange={(e) => setEditForm({...editForm, monthly_fee: parseFloat(e.target.value)})} className="w-full px-3 py-2.5 text-sm font-black text-emerald-600 bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-500 transition-colors" /></div>
             <div className="flex flex-col gap-1.5"><span className="text-[11px] text-slate-700 font-bold">តំបន់ (Zone)៖</span><input type="text" value={editForm.zone} onChange={(e) => setEditForm({...editForm, zone: e.target.value})} className="w-full px-3 py-2.5 text-sm font-bold text-slate-800 bg-slate-50 border border-slate-200 rounded-lg outline-none" disabled={currentUser?.role !== 'super_admin'} /></div>
-
-            {editForm.status_color === 'blue' ? (
-              <div className="w-full mt-2 p-3 rounded-xl font-bold bg-emerald-50 text-emerald-700 text-[13px] border border-emerald-100 flex items-center justify-center gap-2 shadow-sm">
-                <CheckCircle size={16} /> បានបង់រួចរាល់ (ខែបន្ទាប់៖ {editForm.payment_month})
-              </div>
-            ) : (
-              <div className="w-full mt-2 p-3 rounded-xl bg-amber-50 text-amber-800 text-sm border border-amber-100 shadow-sm flex flex-col items-center">
-                <div className="font-bold flex items-center gap-2 mb-1 text-[12px]"><Clock size={14}/> ស្ថានភាពបច្ចុប្បន្ន</div>
-                <div className="font-black text-amber-700 text-[13px]">{editForm.payment_month} (មិនទាន់បានបង់)</div>
-              </div>
-            )}
-
-            {editForm.status_color !== 'blue' && (
-              <div className="mt-2 p-4 rounded-xl border border-indigo-100 bg-indigo-50 shadow-sm">
-                <label className="block text-[11px] font-black text-indigo-900 mb-2">បង់ប្រាក់ (រើសខែ និងចំនួនខែ)៖</label>
-                <select value={payMonth} onChange={(e) => setPayMonth(e.target.value)} className="w-full mb-3 border border-indigo-200 px-3 py-2 rounded-lg font-bold text-slate-700 bg-white outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer">
-                  {monthsList.map(m => <option key={m} value={m}>បង់ចាប់ពី៖ {m}</option>)}
-                </select>
-                <div className="flex items-center gap-3">
-                  <input type="number" value={payNumMonths} onChange={(e) => setPayNumMonths(parseInt(e.target.value) || 1)} min="1" max="12" className="w-20 border border-indigo-200 px-3 py-2.5 rounded-lg font-bold text-lg text-center outline-none focus:ring-2 focus:ring-amber-400 bg-white shadow-inner" />
-                  <button onClick={handleQuickPay} className="flex-1 bg-amber-500 text-white font-bold py-3 rounded-lg hover:bg-amber-600 transition-colors shadow-md flex justify-center items-center gap-2 text-[13px] cursor-pointer">
-                    <DollarSign size={16}/> បង់ប្រាក់
-                  </button>
-                </div>
-              </div>
-            )}
-
+            {editForm.status_color === 'blue' ? ( <div className="w-full mt-2 p-3 rounded-xl font-bold bg-emerald-50 text-emerald-700 text-[13px] border border-emerald-100 flex items-center justify-center gap-2 shadow-sm"><CheckCircle size={16} /> បានបង់រួចរាល់ (ខែបន្ទាប់៖ {editForm.payment_month})</div> ) : ( <div className="w-full mt-2 p-3 rounded-xl bg-amber-50 text-amber-800 text-sm border border-amber-100 shadow-sm flex flex-col items-center"><div className="font-bold flex items-center gap-2 mb-1 text-[12px]"><Clock size={14}/> ស្ថានភាពបច្ចុប្បន្ន</div><div className="font-black text-amber-700 text-[13px]">{editForm.payment_month} (មិនទាន់បានបង់)</div></div> )}
+            {editForm.status_color !== 'blue' && ( <div className="mt-2 p-4 rounded-xl border border-indigo-100 bg-indigo-50 shadow-sm"><label className="block text-[11px] font-black text-indigo-900 mb-2">បង់ប្រាក់ (រើសខែ និងចំនួនខែ)៖</label><select value={payMonth} onChange={(e) => setPayMonth(e.target.value)} className="w-full mb-3 border border-indigo-200 px-3 py-2 rounded-lg font-bold text-slate-700 bg-white outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer">{monthsList.map(m => <option key={m} value={m}>បង់ចាប់ពី៖ {m}</option>)}</select><div className="flex items-center gap-3"><input type="number" value={payNumMonths} onChange={(e) => setPayNumMonths(parseInt(e.target.value) || 1)} min="1" max="12" className="w-20 border border-indigo-200 px-3 py-2.5 rounded-lg font-bold text-lg text-center outline-none focus:ring-2 focus:ring-amber-400 bg-white shadow-inner" /><button onClick={handleQuickPay} className="flex-1 bg-amber-500 text-white font-bold py-3 rounded-lg hover:bg-amber-600 transition-colors shadow-md flex justify-center items-center gap-2 text-[13px] cursor-pointer"><DollarSign size={16}/> បង់ប្រាក់</button></div></div> )}
             <div className="mt-2 border border-slate-200 rounded-xl bg-slate-50 shadow-sm">
-              <div onClick={() => setIsManualEditOpen(!isManualEditOpen)} className="p-3 font-bold text-slate-700 text-[12px] cursor-pointer hover:bg-slate-200 flex items-center justify-center gap-2 transition-colors rounded-xl">
-                <Sliders size={16} className="text-indigo-500"/> ជម្រើសកែប្រែដោយដៃ (Manual Edit)
-              </div>
+              <div onClick={() => setIsManualEditOpen(!isManualEditOpen)} className="p-3 font-bold text-slate-700 text-[12px] cursor-pointer hover:bg-slate-200 flex items-center justify-center gap-2 transition-colors rounded-xl"><Sliders size={16} className="text-indigo-500"/> ជម្រើសកែប្រែដោយដៃ (Manual Edit)</div>
               {isManualEditOpen && (
                 <div className="p-4 border-t border-slate-200 space-y-3 bg-white rounded-b-xl">
-                  <div>
-                    <label className="block text-xs font-bold mb-1 text-slate-500">ខែត្រូវបង់បន្ទាប់៖</label>
-                    <select value={editForm.payment_month} onChange={e => setEditForm({...editForm, payment_month: e.target.value})} className="w-full border px-3 py-2 rounded-lg font-bold text-indigo-700 bg-slate-50 outline-none cursor-pointer">
-                      {monthsList.map(m => <option key={m} value={m}>{m}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold mb-1 text-slate-500">ស្ថានភាពបង់ប្រាក់៖</label>
-                    <select value={editForm.status_color} onChange={e => setEditForm({...editForm, status_color: e.target.value})} className="w-full border px-3 py-2 rounded-lg bg-slate-50 font-bold outline-none cursor-pointer">
-                      <option value="blue">🔵 បានបង់</option>
-                      <option value="yellow">🟡 មិនទាន់បានបង់</option>
-                      <option value="red">🔴 ទីតាំងបិទ</option>
-                      <option value="black">⚫ បានបង់តែទុកសិន</option>
-                    </select>
-                  </div>
+                  <div><label className="block text-xs font-bold mb-1 text-slate-500">ខែត្រូវបង់បន្ទាប់៖</label><select value={editForm.payment_month} onChange={e => setEditForm({...editForm, payment_month: e.target.value})} className="w-full border px-3 py-2 rounded-lg font-bold text-indigo-700 bg-slate-50 outline-none cursor-pointer">{monthsList.map(m => <option key={m} value={m}>{m}</option>)}</select></div>
+                  <div><label className="block text-xs font-bold mb-1 text-slate-500">ស្ថានភាពបង់ប្រាក់៖</label><select value={editForm.status_color} onChange={e => setEditForm({...editForm, status_color: e.target.value})} className="w-full border px-3 py-2 rounded-lg bg-slate-50 font-bold outline-none cursor-pointer"><option value="blue">🔵 បានបង់</option><option value="yellow">🟡 មិនទាន់បានបង់</option><option value="red">🔴 ទីតាំងបិទ</option><option value="black">⚫ បានបង់តែទុកសិន</option></select></div>
                 </div>
               )}
             </div>
-
-            <button onClick={handleOpenHistory} className="w-full mt-1 py-3 rounded-xl font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition-colors shadow-sm flex justify-center items-center gap-2 text-[12px] cursor-pointer">
-              <History size={16}/> មើលប្រវត្តិបង់ប្រាក់
-            </button>
+            <button onClick={handleOpenHistory} className="w-full mt-1 py-3 rounded-xl font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition-colors shadow-sm flex justify-center items-center gap-2 text-[12px] cursor-pointer"><History size={16}/> មើលប្រវត្តិបង់ប្រាក់</button>
           </div>
-          
-          <div className="p-4 bg-white border-t border-slate-100 flex gap-2">
-            <button onClick={handleUpdate} className="flex-1 bg-[#5252d6] text-white font-bold py-3 rounded-xl hover:bg-indigo-700 flex justify-center items-center gap-2 cursor-pointer shadow-md text-[13px] transition-colors">
-              <Save size={16} /> រក្សាទុក
-            </button>
-            <button onClick={() => window.print()} className="flex-1 bg-[#0ea5e9] text-white font-bold py-3 rounded-xl hover:bg-sky-500 flex justify-center items-center gap-2 cursor-pointer shadow-md text-[13px] transition-colors">
-              <Printer size={16} /> បោះពុម្ព
-            </button>
-          </div>
+          <div className="p-4 bg-white border-t border-slate-100 flex gap-2"><button onClick={handleUpdate} className="flex-1 bg-[#5252d6] text-white font-bold py-3 rounded-xl hover:bg-indigo-700 flex justify-center items-center gap-2 cursor-pointer shadow-md text-[13px] transition-colors"><Save size={16} /> រក្សាទុក</button><button onClick={() => window.print()} className="flex-1 bg-[#0ea5e9] text-white font-bold py-3 rounded-xl hover:bg-sky-500 flex justify-center items-center gap-2 cursor-pointer shadow-md text-[13px] transition-colors"><Printer size={16} /> បោះពុម្ព</button></div>
         </div>
       )}
 
       {historyModalOpen && (
         <div className="absolute inset-0 z-[10000] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md h-[80%] max-h-[600px] flex flex-col overflow-hidden">
-            <div className="p-4 border-b border-slate-100 bg-indigo-50 flex justify-between items-center">
-              <h3 className="font-bold text-indigo-800 text-lg flex items-center"><History className="mr-2 text-indigo-600" size={20}/>ប្រវត្តិបង់ប្រាក់</h3>
-              <button onClick={() => setHistoryModalOpen(false)} className="text-slate-400 hover:text-rose-500 bg-white rounded-full w-8 h-8 flex items-center justify-center shadow-sm border border-slate-200 cursor-pointer"><X size={18}/></button>
-            </div>
+            <div className="p-4 border-b border-slate-100 bg-indigo-50 flex justify-between items-center"><h3 className="font-bold text-indigo-800 text-lg flex items-center"><History className="mr-2 text-indigo-600" size={20}/>ប្រវត្តិបង់ប្រាក់</h3><button onClick={() => setHistoryModalOpen(false)} className="text-slate-400 hover:text-rose-500 bg-white rounded-full w-8 h-8 flex items-center justify-center shadow-sm border border-slate-200 cursor-pointer"><X size={18}/></button></div>
             <div className="p-4 overflow-y-auto flex-1 space-y-3 bg-slate-50">
-              {isLoadingHistory ? (
-                <div className="flex flex-col items-center justify-center h-full text-slate-500 py-10">
-                  <Clock className="animate-spin text-indigo-500 mb-3" size={32}/>
-                  <p className="font-bold">កំពុងទាញយកទិន្នន័យ...</p>
-                </div>
-              ) : historyData.length === 0 ? (
-                <div className="text-center text-slate-500 font-bold py-5 bg-white rounded-xl border border-slate-200 shadow-sm">មិនមានប្រវត្តិបង់ប្រាក់ទេ</div>
-              ) : (
+              {isLoadingHistory ? ( <div className="flex flex-col items-center justify-center h-full text-slate-500 py-10"><Clock className="animate-spin text-indigo-500 mb-3" size={32}/><p className="font-bold">កំពុងទាញយកទិន្នន័យ...</p></div> ) : historyData.length === 0 ? ( <div className="text-center text-slate-500 font-bold py-5 bg-white rounded-xl border border-slate-200 shadow-sm">មិនមានប្រវត្តិបង់ប្រាក់ទេ</div> ) : (
                 <>
                   <div className="text-center mb-4 text-sm font-bold text-slate-600 bg-white py-2 rounded-lg border border-slate-200 shadow-sm">ប្រវត្តិបង់ប្រាក់ចុងក្រោយ</div>
                   {historyData.map((record) => {
                     const dateObj = new Date(record.paid_at || record.created_at);
                     const formattedDate = `${dateObj.getDate().toString().padStart(2, '0')}/${(dateObj.getMonth()+1).toString().padStart(2, '0')}/${dateObj.getFullYear()} - ${dateObj.getHours().toString().padStart(2, '0')}:${dateObj.getMinutes().toString().padStart(2, '0')}`;
                     const khmerMonthDisplay = monthsList[record.month - 1] || `ខែទី ${record.month}`;
-
                     return (
                       <div key={record.id} className="flex justify-between items-center p-4 bg-white border-l-4 border-emerald-500 rounded-xl shadow-sm mb-3">
-                        <div>
-                          <div className="font-bold text-slate-800 text-base">{khmerMonthDisplay} ឆ្នាំ {record.year}</div>
-                          <div className="text-xs text-slate-500 font-medium mt-1 flex items-center gap-1"><Clock size={12}/> {formattedDate}</div>
-                          <div className="text-sm font-bold text-emerald-600 mt-1">៛ {Number(record.amount || 0).toLocaleString()}</div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <div className="text-emerald-600 font-bold bg-emerald-50 px-3 py-1.5 rounded-full text-xs border border-emerald-100 flex items-center"><CheckCircle size={14} className="mr-1"/> បានបង់</div>
-                          <button onClick={() => handleUndoPayment(record.id, khmerMonthDisplay)} className="w-8 h-8 flex items-center justify-center rounded-full bg-rose-50 text-rose-500 hover:bg-rose-500 hover:text-white border border-rose-200 transition-colors shadow-sm cursor-pointer" title="លុបការបង់ប្រាក់ខែនេះ">
-                            <RotateCcw size={14} />
-                          </button>
-                        </div>
+                        <div><div className="font-bold text-slate-800 text-base">{khmerMonthDisplay} ឆ្នាំ {record.year}</div><div className="text-xs text-slate-500 font-medium mt-1 flex items-center gap-1"><Clock size={12}/> {formattedDate}</div><div className="text-sm font-bold text-emerald-600 mt-1">៛ {Number(record.amount || 0).toLocaleString()}</div></div>
+                        <div className="flex items-center gap-2"><div className="text-emerald-600 font-bold bg-emerald-50 px-3 py-1.5 rounded-full text-xs border border-emerald-100 flex items-center"><CheckCircle size={14} className="mr-1"/> បានបង់</div><button onClick={() => handleUndoPayment(record.id, khmerMonthDisplay)} className="w-8 h-8 flex items-center justify-center rounded-full bg-rose-50 text-rose-500 hover:bg-rose-500 hover:text-white border border-rose-200 transition-colors shadow-sm cursor-pointer" title="លុបការបង់ប្រាក់ខែនេះ"><RotateCcw size={14} /></button></div>
                       </div>
                     );
                   })}
@@ -808,24 +714,11 @@ export default function Map() {
         <div className="absolute inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 transform transition-all">
                 <h3 className="font-bold text-indigo-800 text-lg mb-4 flex items-center"><Road className="mr-2 text-indigo-500" size={20}/>{roadEditData.isNew ? "បន្ថែមផ្លូវថ្មី" : "កែប្រែព័ត៌មានផ្លូវ"}</h3>
-                <label className="block text-xs font-bold text-slate-500 mb-1">ឈ្មោះផ្លូវ (Road Name):</label>
-                <input type="text" value={roadEditData.name} onChange={e => setRoadEditData({...roadEditData, name: e.target.value})} className="w-full border border-slate-300 p-2.5 mb-3 rounded-lg outline-none focus:border-indigo-500 font-bold" />
-                <label className="block text-xs font-bold text-slate-500 mb-1">ទំហំផ្លូវ (Width e.g. 5m):</label>
-                <input type="text" value={roadEditData.width} onChange={e => setRoadEditData({...roadEditData, width: e.target.value})} className="w-full border border-slate-300 p-2.5 mb-3 rounded-lg outline-none focus:border-indigo-500 font-bold" />
-                <label className="block text-xs font-bold text-slate-500 mb-1">អាសយដ្ឋាន (Address):</label>
-                <input type="text" value={roadEditData.address} onChange={e => setRoadEditData({...roadEditData, address: e.target.value})} className="w-full border border-slate-300 p-2.5 mb-3 rounded-lg outline-none focus:border-indigo-500 font-bold" />
-                <label className="block text-xs font-bold text-slate-500 mb-1">ប្រភេទផ្លូវ (Road Type):</label>
-                <select value={roadEditData.road_type} onChange={e => setRoadEditData({...roadEditData, road_type: e.target.value})} className="w-full border border-slate-300 p-2.5 mb-5 rounded-lg outline-none focus:border-indigo-500 font-bold bg-slate-50 text-indigo-700">
-                    <option value="Land road">Land road (ផ្លូវដី)</option>
-                    <option value="Concrete road">Concrete road (ផ្លូវបេតុង)</option>
-                    <option value="Hight Ways road">Hight Ways road (ផ្លូវហាយវេ)</option>
-                    <option value="Asphalt road">Asphalt road (ផ្លូវកៅស៊ូរ)</option>
-                    <option value="Nation road">Nation road (ផ្លូវជាតិ)</option>
-                </select>
-                <div className="flex gap-2">
-                    <button onClick={saveRoadData} className="bg-indigo-600 hover:bg-indigo-700 text-white flex-1 py-3 rounded-lg font-bold shadow-md transition-colors cursor-pointer">រក្សាទុក</button>
-                    <button onClick={() => setRoadEditData(null)} className="bg-slate-200 hover:bg-slate-300 text-slate-700 flex-1 py-3 rounded-lg font-bold transition-colors cursor-pointer">បោះបង់</button>
-                </div>
+                <label className="block text-xs font-bold text-slate-500 mb-1">ឈ្មោះផ្លូវ (Road Name):</label><input type="text" value={roadEditData.name} onChange={e => setRoadEditData({...roadEditData, name: e.target.value})} className="w-full border border-slate-300 p-2.5 mb-3 rounded-lg outline-none focus:border-indigo-500 font-bold" />
+                <label className="block text-xs font-bold text-slate-500 mb-1">ទំហំផ្លូវ (Width e.g. 5m):</label><input type="text" value={roadEditData.width} onChange={e => setRoadEditData({...roadEditData, width: e.target.value})} className="w-full border border-slate-300 p-2.5 mb-3 rounded-lg outline-none focus:border-indigo-500 font-bold" />
+                <label className="block text-xs font-bold text-slate-500 mb-1">អាសយដ្ឋាន (Address):</label><input type="text" value={roadEditData.address} onChange={e => setRoadEditData({...roadEditData, address: e.target.value})} className="w-full border border-slate-300 p-2.5 mb-3 rounded-lg outline-none focus:border-indigo-500 font-bold" />
+                <label className="block text-xs font-bold text-slate-500 mb-1">ប្រភេទផ្លូវ (Road Type):</label><select value={roadEditData.road_type} onChange={e => setRoadEditData({...roadEditData, road_type: e.target.value})} className="w-full border border-slate-300 p-2.5 mb-5 rounded-lg outline-none focus:border-indigo-500 font-bold bg-slate-50 text-indigo-700"><option value="Land road">Land road (ផ្លូវដី)</option><option value="Concrete road">Concrete road (ផ្លូវបេតុង)</option><option value="Hight Ways road">Hight Ways road (ផ្លូវហាយវេ)</option><option value="Asphalt road">Asphalt road (ផ្លូវកៅស៊ូរ)</option><option value="Nation road">Nation road (ផ្លូវជាតិ)</option></select>
+                <div className="flex gap-2"><button onClick={saveRoadData} className="bg-indigo-600 hover:bg-indigo-700 text-white flex-1 py-3 rounded-lg font-bold shadow-md transition-colors cursor-pointer">រក្សាទុក</button><button onClick={() => setRoadEditData(null)} className="bg-slate-200 hover:bg-slate-300 text-slate-700 flex-1 py-3 rounded-lg font-bold transition-colors cursor-pointer">បោះបង់</button></div>
             </div>
         </div>
       )}
@@ -833,10 +726,7 @@ export default function Map() {
       {showLoginModal && (
         <div className="absolute inset-0 z-[9999] flex items-center justify-center bg-indigo-900">
           <div className="w-full max-w-md bg-white rounded-xl shadow-2xl p-8 m-4">
-            <div className="text-center mb-6">
-              <img src="/logo/Map Ark.png" alt="Maps Ark Logo" onError={(e) => e.currentTarget.style.display='none'} className="w-24 h-24 mx-auto mb-4 object-contain rounded-full shadow-md border-2 border-indigo-100" />
-              <h1 className="text-2xl font-bold text-slate-800">ចូលប្រើប្រព័ន្ធ</h1>
-            </div>
+            <div className="text-center mb-6"><img src="/logo/Map Ark.png" alt="Maps Ark Logo" onError={(e) => e.currentTarget.style.display='none'} className="w-24 h-24 mx-auto mb-4 object-contain rounded-full shadow-md border-2 border-indigo-100" /><h1 className="text-2xl font-bold text-slate-800">ចូលប្រើប្រព័ន្ធ</h1></div>
             <form onSubmit={handleRealLogin} className="space-y-4">
               <input type="email" placeholder="Email" required className="w-full px-4 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-slate-700" />
               <input type="password" placeholder="Password" required className="w-full px-4 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-slate-700" />
