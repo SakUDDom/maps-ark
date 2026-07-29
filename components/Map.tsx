@@ -167,10 +167,19 @@ export default function Map() {
       L.control.zoom({ position: 'bottomright' }).addTo(mapInstance.current);
       L.tileLayer('https://{s}.google.com/vt/lyrs=s,h&x={x}&y={y}&z={z}', { maxZoom: 21, subdomains: ['mt0', 'mt1', 'mt2', 'mt3'] }).addTo(mapInstance.current);
 
-      // 🚀 ប្រើ Any ដើម្បីបិទភ្នែក TypeScript កុំឱ្យ Vercel គាំងពេល Build
-      const pmControls: any = { drawMarker: false, drawCircleMarker: false, drawPolyline: false, drawRectangle: false, drawPolygon: false, drawCircle: false, drawText: false, editMode: false, dragMode: false, cutPolygon: false, removalMode: false, rotateMode: false };
+      // 🚀 ជួសជុលចំណុច Line 101៖ ប្រើ Any លើកូដ setGlobalOptions និង addControls ដើម្បីកុំឱ្យ TypeScript Build គាំងលើ Vercel
       if (mapInstance.current.pm) {
-        (mapInstance.current.pm as any).addControls(pmControls);
+        const pmInstance = mapInstance.current.pm as any;
+        if (typeof pmInstance.setGlobalOptions === 'function') {
+          pmInstance.setGlobalOptions({ pmIgnore: false } as any);
+        }
+        if (typeof pmInstance.addControls === 'function') {
+          pmInstance.addControls({ 
+            drawMarker: false, drawCircleMarker: false, drawPolyline: false, drawRectangle: false, 
+            drawPolygon: false, drawCircle: false, drawText: false, editMode: false, dragMode: false, 
+            cutPolygon: false, removalMode: false, rotateMode: false 
+          } as any);
+        }
       }
 
       if (!mapInstance.current.getPane('bordersPane')) {
@@ -199,7 +208,7 @@ export default function Map() {
         if (shapeType === 'road') {
             setRoadEditData({ isNew: true, geojson: geojson, name: '', width: '', address: '', road_type: 'Land road' });
             mapInstance.current?.removeLayer(e.layer);
-            mapInstance.current?.pm.disableDraw();
+            (mapInstance.current?.pm as any)?.disableDraw();
             return;
         } 
         else if (shapeType === 'border') {
@@ -214,7 +223,7 @@ export default function Map() {
         
         if (mapInstance.current) {
           mapInstance.current.removeLayer(layer);
-          mapInstance.current.pm.disableDraw();
+          (mapInstance.current.pm as any)?.disableDraw();
           fetchAndRenderData();
         }
       });
@@ -279,16 +288,15 @@ export default function Map() {
     return true;
   };
 
-  // 🚀 ប្រើ Any ដើម្បីបិទភ្នែក TypeScript ពេលប្រើ Tool Geoman
-  const drawPoint = () => { if(checkPermission()){ activeDrawTool.current = 'point'; mapInstance.current?.pm.disableDraw(); (mapInstance.current?.pm as any).enableDraw('Marker', { snappable: true }); }};
-  const drawPolygon = () => { if(checkPermission()){ activeDrawTool.current = 'polygon'; mapInstance.current?.pm.disableDraw(); (mapInstance.current?.pm as any).enableDraw('Polygon', { snappable: true }); }};
-  const drawRoad = () => { if(checkPermission()){ activeDrawTool.current = 'road'; mapInstance.current?.pm.disableDraw(); (mapInstance.current?.pm as any).enableDraw('Line', { snappable: true }); }};
-  const drawBorder = () => { if(checkPermission()){ activeDrawTool.current = 'border'; mapInstance.current?.pm.disableDraw(); (mapInstance.current?.pm as any).enableDraw('Polygon', { snappable: true }); }};
+  const drawPoint = () => { if(checkPermission()){ activeDrawTool.current = 'point'; (mapInstance.current?.pm as any)?.disableDraw(); (mapInstance.current?.pm as any)?.enableDraw('Marker', { snappable: true }); }};
+  const drawPolygon = () => { if(checkPermission()){ activeDrawTool.current = 'polygon'; (mapInstance.current?.pm as any)?.disableDraw(); (mapInstance.current?.pm as any)?.enableDraw('Polygon', { snappable: true }); }};
+  const drawRoad = () => { if(checkPermission()){ activeDrawTool.current = 'road'; (mapInstance.current?.pm as any)?.disableDraw(); (mapInstance.current?.pm as any)?.enableDraw('Line', { snappable: true }); }};
+  const drawBorder = () => { if(checkPermission()){ activeDrawTool.current = 'border'; (mapInstance.current?.pm as any)?.disableDraw(); (mapInstance.current?.pm as any)?.enableDraw('Polygon', { snappable: true }); }};
   
-  const toggleEdit = () => { if(checkPermission()) mapInstance.current?.pm.toggleGlobalEditMode(); };
-  const toggleCut = () => { if(checkPermission()) mapInstance.current?.pm.toggleGlobalCutMode(); };
-  const toggleRotate = () => { if(checkPermission()) mapInstance.current?.pm.toggleGlobalRotateMode(); };
-  const toggleRemove = () => { if(checkPermission()) mapInstance.current?.pm.toggleGlobalRemovalMode(); };
+  const toggleEdit = () => { if(checkPermission()) (mapInstance.current?.pm as any)?.toggleGlobalEditMode(); };
+  const toggleCut = () => { if(checkPermission()) (mapInstance.current?.pm as any)?.toggleGlobalCutMode(); };
+  const toggleRotate = () => { if(checkPermission()) (mapInstance.current?.pm as any)?.toggleGlobalRotateMode(); };
+  const toggleRemove = () => { if(checkPermission()) (mapInstance.current?.pm as any)?.toggleGlobalRemovalMode(); };
 
   const updateMarkerColorLocally = (id: string, colorHex: string) => {
     pointsLayer.current?.eachLayer((layer: any) => {
@@ -645,7 +653,6 @@ export default function Map() {
         </div>
       )}
 
-      {/* 🚀 Login ពេញលេញ */}
       {showLoginModal && (
         <div className="absolute inset-0 z-[9999] flex items-center justify-center bg-indigo-900">
           <div className="w-full max-w-md bg-white rounded-xl shadow-2xl p-8 m-4">
