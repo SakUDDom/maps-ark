@@ -4,7 +4,8 @@ import 'leaflet/dist/leaflet.css';
 import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css';
 import L from 'leaflet';
 import '@geoman-io/leaflet-geoman-free';
-import { MapPin, Eraser, Hexagon, Scissors, RotateCw, Search, Slash, Move, ShieldAlert, LogIn, LogOut, User, PieChart, Ban, Save, X, Spline, Download, Printer, History, Edit3, DollarSign, Clock, Camera, Road, Sliders, CheckCircle, RotateCcw, Home, XCircle, Wallet, CalendarDays, ChevronLeft, ChevronRight, List, Layers, Map } from 'lucide-react';
+// 🚀 ជួសជុល Import: បន្ថែម Map as MapIcon ដើម្បីកុំឱ្យជាន់ឈ្មោះជាមួយ Function Map()
+import { MapPin, Eraser, Hexagon, Scissors, RotateCw, Search, Slash, Move, ShieldAlert, LogIn, LogOut, User, PieChart, Ban, Save, X, Spline, Download, Map as MapIcon, Printer, History, Edit3, DollarSign, Clock, Camera, Road, Sliders, CheckCircle, RotateCcw, Home, XCircle, Wallet, CalendarDays, ChevronLeft, ChevronRight, List, Layers } from 'lucide-react';
 import { supabaseClient } from '../utils/supabase';
 
 const Toggle = ({ enabled, setEnabled }: { enabled: boolean, setEnabled: (val: boolean) => void }) => (
@@ -60,14 +61,15 @@ export default function Map() {
   const currentUserRef = useRef<any>(null);
   useEffect(() => { currentUserRef.current = currentUser; }, [currentUser]);
 
-  const monthsList = ['ខែមករា', 'ខែកក្កដា', 'ខែមីនា', 'ខែមេសា', 'ខែឧសភា', 'ខែមិថុនា', 'ខែកក្កដា', 'ខែសីហា', 'ខែកញ្ញា', 'ខែតុលា', 'ខែវិច្ឆិកា', 'ខែធ្នូ'];
+  const monthsList = ['ខែមករា', 'ខែកកុម្ភៈ', 'ខែមីនា', 'ខែមេសា', 'ខែឧសភា', 'ខែមិថុនា', 'ខែកក្កដា', 'ខែសីហា', 'ខែកញ្ញា', 'ខែតុលា', 'ខែវិច្ឆិកា', 'ខែធ្នូ'];
 
   useEffect(() => {
     const checkSession = async () => {
       const { data: { session } } = await supabaseClient.auth.getSession();
       if (session) {
         const { data: profile } = await supabaseClient.from('Profiles_Access').select('role, zone').eq('id', session.user.id).maybeSingle();
-        setCurrentUser({ id: session.user.id, name: profile?.zone || session.user.email, role: profile?.role || 'admin' });
+        const roleStr = profile?.role ? profile.role.toLowerCase().replace(' ', '_') : 'user';
+        setCurrentUser({ id: session.user.id, name: profile?.zone || session.user.email, role: roleStr });
         setShowLoginModal(false);
       }
     };
@@ -479,7 +481,7 @@ export default function Map() {
           {activeView === 'map' ? (
             <button onClick={openReport} className="flex items-center gap-2 px-5 py-2 text-sm font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl transition-all shadow-sm cursor-pointer"><PieChart size={18} className="text-indigo-600" /> របាយការណ៍</button>
           ) : (
-            <button onClick={() => setActiveView('map')} className="flex items-center gap-2 px-5 py-2 text-sm font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 rounded-xl transition-all shadow-sm cursor-pointer"><Map size={18} /> ត្រឡប់ទៅផែនទី</button>
+            <button onClick={() => setActiveView('map')} className="flex items-center gap-2 px-5 py-2 text-sm font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 rounded-xl transition-all shadow-sm cursor-pointer"><MapIcon size={18} /> ត្រឡប់ទៅផែនទី</button>
           )}
           {currentUser ? (
             <button onClick={async () => { await supabaseClient.auth.signOut(); setCurrentUser(null); setShowLoginModal(true); setActiveView('map'); }} className="flex items-center gap-2 px-5 py-2 text-sm font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-xl transition-all shadow-sm border border-rose-200 cursor-pointer"><LogOut size={18} /> ចេញ</button>
