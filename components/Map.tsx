@@ -4,7 +4,7 @@ import 'leaflet/dist/leaflet.css';
 import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css';
 import L from 'leaflet';
 import '@geoman-io/leaflet-geoman-free';
-import { MapPin, Eraser, Hexagon, Scissors, RotateCw, Search, Slash, Move, ShieldAlert, LogIn, LogOut, User, PieChart, Ban, Save, X, Spline, Download, Map as MapIcon, Printer, History, Edit3, DollarSign, Clock, Camera, Road, Sliders, CheckCircle, RotateCcw, Home, XCircle, Wallet, CalendarDays, ChevronLeft, ChevronRight, List } from 'lucide-react';
+import { MapPin, Eraser, Hexagon, Scissors, RotateCw, Search, Slash, Move, ShieldAlert, LogIn, LogOut, User, PieChart, Ban, Save, X, Spline, Download, Map as MapIcon, Printer, History, Edit3, DollarSign, Clock, Camera, Road, Sliders, CheckCircle, RotateCcw, Home, XCircle, Wallet, CalendarDays, ChevronLeft, ChevronRight, List, Layers } from 'lucide-react';
 import { supabaseClient } from '../utils/supabase';
 
 const Toggle = ({ enabled, setEnabled }: { enabled: boolean, setEnabled: (val: boolean) => void }) => (
@@ -26,8 +26,11 @@ export default function Map() {
 
   const [currentUser, setCurrentUser] = useState<any>(null); 
   const [showLoginModal, setShowLoginModal] = useState(true);
-  const [activeView, setActiveView] = useState<'map' | 'report'>('map'); // 🚀 State ប្តូររវាង ផែនទី និង របាយការណ៍
+  const [activeView, setActiveView] = useState<'map' | 'report'>('map');
   const [allData, setAllData] = useState<any[]>([]);
+
+  // 🚀 State សម្រាប់បើកបិទ ផ្ទាំង Sidebar ខាងឆ្វេង (Default = false ដូចកូដចាស់)
+  const [isToolsPanelOpen, setIsToolsPanelOpen] = useState(false);
 
   const [selectedHome, setSelectedHome] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -45,7 +48,6 @@ export default function Map() {
   const [historyData, setHistoryData] = useState<any[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
-  // 🚀 States សម្រាប់ផ្ទាំងរបាយការណ៍
   const [paymentsData, setPaymentsData] = useState<any[]>([]);
   const [reportZone, setReportZone] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -392,19 +394,16 @@ export default function Map() {
     }
   };
 
-  // 🚀 មុខងារបើកផ្ទាំងរបាយការណ៍ និងទាញយកទិន្នន័យចំណូល
   const openReport = async () => {
     setActiveView('report');
     const { data } = await supabaseClient.from('payments').select('*');
     if (data) setPaymentsData(data);
   };
 
-  // 🚀 មុខងារប្តូរខែរួម (Bulk Month Update) 
   const handleGlobalMonthChange = async (e: any) => {
     const val = e.target.value;
     if (!val || !currentUserRef.current) return;
     if (!['admin', 'super_admin'].includes(currentUserRef.current.role)) return;
-    
     if(confirm(`តើអ្នកពិតជាចង់ប្តូរខែត្រូវបង់សម្រាប់ផ្ទះទាំងអស់ក្នុងតំបន់នេះទៅជា « ${val} » មែនទេ?`)) { 
         let query = supabaseClient.from('households').update({ payment_month: val });
         if (currentUserRef.current.role !== 'super_admin') query = query.eq('zone', currentUserRef.current.name);
@@ -414,12 +413,10 @@ export default function Map() {
     }
   };
 
-  // 🚀 មុខងារប្តូរស្ថានភាពរួម (Bulk Status Update)
   const handleGlobalStatusChange = async (e: any) => {
     const val = e.target.value;
     if (!val || !currentUserRef.current) return;
     if (!['admin', 'super_admin'].includes(currentUserRef.current.role)) return;
-    
     if(confirm(`តើអ្នកពិតជាចង់ប្តូរស្ថានភាពសម្រាប់ផ្ទះទាំងអស់ក្នុងតំបន់នេះមែនទេ?`)) { 
         let query = supabaseClient.from('households').update({ status_color: val });
         if (currentUserRef.current.role !== 'super_admin') query = query.eq('zone', currentUserRef.current.name);
@@ -429,7 +426,6 @@ export default function Map() {
     }
   };
 
-  // 🚀 មុខងារទាញយក CSV
   const handleExportCSV = () => {
     let csv = "\uFEFFលេខកូដ,ឈ្មោះ,តម្លៃត្រូវបង់,ខែត្រូវបង់,តំបន់,ស្ថានភាព\n"; 
     reportHouseholds.forEach(h => { csv += `"${h.custom_id}","${h.customer_name||''}","${h.monthly_fee||0}","${h.payment_month||''}","${h.zone||''}","${h.status_color}"\n`; });
@@ -437,7 +433,6 @@ export default function Map() {
     link.download = `Maps_Ark_Report_${new Date().toISOString().split('T')[0]}.csv`; link.click();
   };
 
-  // 🚀 ការគណនាទិន្នន័យសម្រាប់ Report
   let reportHouseholds = allData;
   if (currentUser?.role !== 'super_admin') reportHouseholds = reportHouseholds.filter(h => h.zone === currentUser?.name);
   else if (reportZone) reportHouseholds = reportHouseholds.filter(h => h.zone === reportZone);
@@ -476,7 +471,7 @@ export default function Map() {
           {activeView === 'map' ? (
             <button onClick={openReport} className="flex items-center gap-2 px-5 py-2 text-sm font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl transition-all shadow-sm cursor-pointer"><PieChart size={18} className="text-indigo-600" /> របាយការណ៍</button>
           ) : (
-            <button onClick={() => setActiveView('map')} className="flex items-center gap-2 px-5 py-2 text-sm font-bold text-slate-700 bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 rounded-xl transition-all shadow-sm cursor-pointer"><MapIcon size={18} /> ត្រឡប់ទៅផែនទី</button>
+            <button onClick={() => setActiveView('map')} className="flex items-center gap-2 px-5 py-2 text-sm font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 rounded-xl transition-all shadow-sm cursor-pointer"><MapIcon size={18} /> ត្រឡប់ទៅផែនទី</button>
           )}
           {currentUser ? (
             <button onClick={async () => { await supabaseClient.auth.signOut(); setCurrentUser(null); setShowLoginModal(true); setActiveView('map'); }} className="flex items-center gap-2 px-5 py-2 text-sm font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-xl transition-all shadow-sm border border-rose-200 cursor-pointer"><LogOut size={18} /> ចេញ</button>
@@ -486,12 +481,26 @@ export default function Map() {
         </div>
       </header>
 
-      {/* 🚀 ផ្ទៃបង្ហាញផែនទី (លាក់ពេលបើករបាយការណ៍) */}
+      {/* 🚀 ផ្ទៃបង្ហាញផែនទី */}
       <div className={`flex-1 relative w-full h-full ${activeView === 'map' ? 'flex' : 'hidden'}`}>
-        <div className="absolute top-[80px] left-4 z-[1000] w-[340px] flex flex-col gap-4 hide-scrollbar overflow-y-auto max-h-[calc(100vh-90px)] pb-6">
-          <div className="bg-white/80 backdrop-blur-xl border border-white shadow-lg rounded-2xl p-3 flex items-center gap-2">
+        
+        {/* 🚀 ប៊ូតុង Floating Layers សម្រាប់ចុចបើក Sidebar (បេះបិទរូបទី ២) */}
+        {!isToolsPanelOpen && (
+          <button 
+            onClick={() => setIsToolsPanelOpen(true)} 
+            className="absolute top-[80px] left-4 z-[1000] bg-white p-3.5 rounded-2xl shadow-xl border border-slate-200 hover:bg-slate-50 transition-all cursor-pointer text-indigo-600 flex items-center justify-center hover:scale-105"
+            title="បើកផ្ទាំងបញ្ជា"
+          >
+            <Layers size={22} />
+          </button>
+        )}
+
+        {/* 🚀 ផ្ទាំង Sidebar ខាងឆ្វេង (Hidden by default / Slide-in ពេលចុច) */}
+        <div className={`absolute top-[80px] left-4 z-[1050] w-[340px] flex flex-col gap-4 transition-all duration-300 transform ${isToolsPanelOpen ? 'translate-x-0 opacity-100 pointer-events-auto' : '-translate-x-[380px] opacity-0 pointer-events-none'} hide-scrollbar overflow-y-auto max-h-[calc(100vh-90px)] pb-6`}>
+          <div className="bg-white/90 backdrop-blur-xl border border-white shadow-lg rounded-2xl p-3 flex items-center gap-2">
             <input type="text" placeholder="ស្វែងរកលេខកូដ (KPC...)" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} className="flex-1 bg-white border border-slate-200 rounded-xl px-4 py-2.5 outline-none text-sm font-bold text-slate-700 focus:border-indigo-500" />
             <button onClick={handleSearch} className="bg-indigo-600 text-white p-2.5 rounded-xl hover:bg-indigo-700 cursor-pointer shadow-md"><Search size={20} /></button>
+            <button onClick={() => setIsToolsPanelOpen(false)} className="bg-rose-50 text-rose-600 p-2.5 rounded-xl hover:bg-rose-100 cursor-pointer border border-rose-200 shadow-sm" title="បិទផ្ទាំង"><X size={20} /></button>
           </div>
 
           <div className="bg-white/90 backdrop-blur-xl border border-white shadow-lg rounded-3xl p-5">
@@ -539,17 +548,16 @@ export default function Map() {
             </div>
           </div>
         </div>
+
         <main className="flex-1 relative z-0 h-full bg-slate-100">
           <div ref={mapRef} className="w-full h-full" />
         </main>
       </div>
 
-      {/* 🚀 ផ្ទៃបង្ហាញរបាយការណ៍ពេញអេក្រង់ (បេះបិទរូបចាស់) */}
+      {/* 🚀 ផ្ទៃបង្ហាញរបាយការណ៍ពេញអេក្រង់ */}
       {activeView === 'report' && (
         <div className="flex-1 w-full h-full overflow-y-auto bg-slate-50 pt-[100px] p-6 lg:p-10 relative z-10">
           <div className="max-w-6xl mx-auto space-y-6">
-            
-            {/* Report Header & Filters */}
             <div className="flex flex-col md:flex-row justify-between items-end gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
               <div>
                 <h2 className="text-2xl font-bold text-slate-800">របាយការណ៍ទូទៅ</h2>
@@ -583,7 +591,6 @@ export default function Map() {
               </div>
             </div>
 
-            {/* 4 Stat Cards */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between">
                 <div className="flex justify-between items-start mb-2"><span className="text-sm font-bold text-slate-500">ផ្ទះសរុប</span><div className="p-2 bg-indigo-50 rounded-lg text-indigo-500"><Home size={20}/></div></div>
@@ -603,7 +610,6 @@ export default function Map() {
               </div>
             </div>
 
-            {/* Revenue Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
                 <div className="flex justify-between items-center mb-4"><h3 className="font-bold text-slate-800">ចំណូលប្រចាំខែនេះ</h3><div className="p-2 bg-emerald-50 rounded-lg text-emerald-500"><Wallet size={24}/></div></div>
@@ -615,7 +621,6 @@ export default function Map() {
               </div>
             </div>
 
-            {/* Table */}
             <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
               <div className="px-6 py-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
                 <h3 className="font-bold text-slate-800 flex items-center"><List size={18} className="mr-2 text-indigo-500"/>បញ្ជីឈ្មោះអតិថិជន</h3>
@@ -663,7 +668,7 @@ export default function Map() {
         </div>
       )}
 
-      {/* 🚀 ផ្ទាំងអតិថិជន (Point Detail) លើផែនទី */}
+      {/* 🚀 ផ្ទាំងអតិថិជន (Point Detail) */}
       {selectedHome && activeView === 'map' && (
         <div className="absolute top-[80px] right-4 z-[9999] w-[380px] bg-white rounded-3xl shadow-2xl flex flex-col overflow-hidden max-h-[calc(100vh-100px)] border border-slate-200">
           <div className="bg-white p-4 border-b border-slate-100 flex justify-between items-center">
@@ -798,7 +803,6 @@ export default function Map() {
         </div>
       )}
 
-      {/* ផ្ទាំងកែប្រែ Road */}
       {roadEditData && (
         <div className="absolute inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 transform transition-all">
