@@ -4,7 +4,7 @@ import 'leaflet/dist/leaflet.css';
 import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css';
 import L from 'leaflet';
 import '@geoman-io/leaflet-geoman-free';
-import { MapPin, Eraser, Hexagon, Scissors, RotateCw, Search, Slash, Move, ShieldAlert, LogIn, LogOut, User, PieChart, Ban, Save, X, Spline, Download, Map as MapIcon, Printer, History, Edit3, DollarSign, Clock, Camera, Road, Sliders, CheckCircle, RotateCcw, Home, XCircle, Wallet, CalendarDays, ChevronLeft, ChevronRight, List, Layers } from 'lucide-react';
+import { MapPin, Eraser, Hexagon, Scissors, RotateCw, Search, Slash, Move, ShieldAlert, LogIn, LogOut, User, PieChart, Ban, Save, X, Spline, Download, Printer, History, Edit3, DollarSign, Clock, Camera, Road, Sliders, CheckCircle, RotateCcw, Home, XCircle, Wallet, CalendarDays, ChevronLeft, ChevronRight, List, Layers } from 'lucide-react';
 import { supabaseClient } from '../utils/supabase';
 
 const Toggle = ({ enabled, setEnabled }: { enabled: boolean, setEnabled: (val: boolean) => void }) => (
@@ -29,7 +29,6 @@ export default function Map() {
   const [activeView, setActiveView] = useState<'map' | 'report'>('map');
   const [allData, setAllData] = useState<any[]>([]);
 
-  // 🚀 State សម្រាប់បើកបិទ ផ្ទាំង Sidebar ខាងឆ្វេង (Default = false ដូចកូដចាស់)
   const [isToolsPanelOpen, setIsToolsPanelOpen] = useState(false);
 
   const [selectedHome, setSelectedHome] = useState<any>(null);
@@ -63,18 +62,21 @@ export default function Map() {
 
   const monthsList = ['ខែមករា', 'ខែកកុម្ភៈ', 'ខែមីនា', 'ខែមេសា', 'ខែឧសភា', 'ខែមិថុនា', 'ខែកក្កដា', 'ខែសីហា', 'ខែកញ្ញា', 'ខែតុលា', 'ខែវិច្ឆិកា', 'ខែធ្នូ'];
 
+  // 🚀 ជួសជុល Role: បម្លែងអក្សរ "Super Admin" ទៅជា "super_admin" ដើម្បីកុំឱ្យខុសលក្ខខណ្ឌ
   useEffect(() => {
     const checkSession = async () => {
       const { data: { session } } = await supabaseClient.auth.getSession();
       if (session) {
         const { data: profile } = await supabaseClient.from('Profiles_Access').select('role, zone').eq('id', session.user.id).maybeSingle();
-        setCurrentUser({ id: session.user.id, name: profile?.zone || session.user.email, role: profile?.role || 'admin' });
+        const roleStr = profile?.role ? profile.role.toLowerCase().replace(' ', '_') : 'user';
+        setCurrentUser({ id: session.user.id, name: profile?.zone || session.user.email, role: roleStr });
         setShowLoginModal(false);
       }
     };
     checkSession();
   }, []);
 
+  // 🚀 លុបការហៅ setStats និងអញ្ញត្តិ t, y, b, r ចេញទាំងស្រុង 
   const fetchAndRenderData = async () => {
     if (pointsLayer.current) pointsLayer.current.clearLayers();
     if (polygonsLayer.current) polygonsLayer.current.clearLayers();
@@ -381,6 +383,7 @@ export default function Map() {
     } else alert('រកមិនឃើញលេខកូដនេះទេ!');
   };
 
+  // 🚀 ជួសជុល Login: បម្លែង Role ដែលទាញមកឱ្យប្រាកដថាអត់មានដកឃ្លា ឬអក្សរធំ
   const handleRealLogin = async (e: any) => {
     e.preventDefault();
     const email = e.target[0].value;
@@ -389,7 +392,8 @@ export default function Map() {
     if (error) { alert('❌ មិនអាចចូលបានទេ៖ ' + error.message); } 
     else if (data.session) {
       const { data: profile } = await supabaseClient.from('Profiles_Access').select('role, zone').eq('id', data.user.id).maybeSingle();
-      setCurrentUser({ name: profile?.zone || email, role: profile?.role || 'admin', id: data.user.id });
+      const roleStr = profile?.role ? profile.role.toLowerCase().replace(' ', '_') : 'user';
+      setCurrentUser({ name: profile?.zone || email, role: roleStr, id: data.user.id });
       setShowLoginModal(false); fetchAndRenderData();
     }
   };
@@ -460,11 +464,19 @@ export default function Map() {
   return (
     <div className="flex flex-col h-screen w-full bg-slate-50 overflow-hidden font-sans relative">
       <header className="h-[64px] absolute top-0 left-0 right-0 bg-white/95 backdrop-blur-md flex justify-between items-center px-6 z-[2000] shadow-sm">
-        <div className="flex items-center gap-4">
-          <h1 className="text-2xl font-black text-indigo-900 tracking-tight">Maps Ark</h1>
-          <span className="text-xs px-3 py-1 bg-indigo-600 text-white rounded-full font-bold shadow-sm">v2.0 Modern 🚀</span>
-          {currentUser?.role === 'super_admin' && (
-            <span className="ml-2 px-3 py-1 bg-purple-100 text-purple-700 text-[11px] font-black rounded-full flex items-center gap-1 shadow-sm border border-purple-200">Super Admin 👑</span>
+        <div className="flex items-center gap-3">
+          <img src="/logo/Map Ark.png" alt="Logo" onError={(e) => e.currentTarget.style.display='none'} className="w-8 h-8 object-contain rounded-md" />
+          <h1 className="text-xl font-bold text-indigo-700">Maps Ark</h1>
+          {currentUser && (
+            <span className={`text-xs px-2 py-1 rounded-full font-bold border shadow-sm flex items-center gap-1 ${
+              currentUser.role === 'super_admin' ? 'bg-purple-100 text-purple-700 border-purple-200' :
+              currentUser.role === 'admin' ? 'bg-rose-100 text-rose-700 border-rose-200' :
+              'bg-emerald-100 text-emerald-700 border-emerald-200'
+            }`}>
+              {currentUser.role === 'super_admin' ? 'Super Admin 👑' : 
+               currentUser.role === 'admin' ? 'Admin' : 
+               `អ្នកប្រមូល៖ ${currentUser.name}`}
+            </span>
           )}
         </div>
         <div className="flex gap-4 items-center">
@@ -481,10 +493,7 @@ export default function Map() {
         </div>
       </header>
 
-      {/* 🚀 ផ្ទៃបង្ហាញផែនទី */}
       <div className={`flex-1 relative w-full h-full ${activeView === 'map' ? 'flex' : 'hidden'}`}>
-        
-        {/* 🚀 ប៊ូតុង Floating Layers សម្រាប់ចុចបើក Sidebar (បេះបិទរូបទី ២) */}
         {!isToolsPanelOpen && (
           <button 
             onClick={() => setIsToolsPanelOpen(true)} 
@@ -495,7 +504,6 @@ export default function Map() {
           </button>
         )}
 
-        {/* 🚀 ផ្ទាំង Sidebar ខាងឆ្វេង (Hidden by default / Slide-in ពេលចុច) */}
         <div className={`absolute top-[80px] left-4 z-[1050] w-[340px] flex flex-col gap-4 transition-all duration-300 transform ${isToolsPanelOpen ? 'translate-x-0 opacity-100 pointer-events-auto' : '-translate-x-[380px] opacity-0 pointer-events-none'} hide-scrollbar overflow-y-auto max-h-[calc(100vh-90px)] pb-6`}>
           <div className="bg-white/90 backdrop-blur-xl border border-white shadow-lg rounded-2xl p-3 flex items-center gap-2">
             <input type="text" placeholder="ស្វែងរកលេខកូដ (KPC...)" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} className="flex-1 bg-white border border-slate-200 rounded-xl px-4 py-2.5 outline-none text-sm font-bold text-slate-700 focus:border-indigo-500" />
@@ -548,13 +556,11 @@ export default function Map() {
             </div>
           </div>
         </div>
-
         <main className="flex-1 relative z-0 h-full bg-slate-100">
           <div ref={mapRef} className="w-full h-full" />
         </main>
       </div>
 
-      {/* 🚀 ផ្ទៃបង្ហាញរបាយការណ៍ពេញអេក្រង់ */}
       {activeView === 'report' && (
         <div className="flex-1 w-full h-full overflow-y-auto bg-slate-50 pt-[100px] p-6 lg:p-10 relative z-10">
           <div className="max-w-6xl mx-auto space-y-6">
@@ -663,12 +669,10 @@ export default function Map() {
                 </div>
               </div>
             </div>
-
           </div>
         </div>
       )}
 
-      {/* 🚀 ផ្ទាំងអតិថិជន (Point Detail) */}
       {selectedHome && activeView === 'map' && (
         <div className="absolute top-[80px] right-4 z-[9999] w-[380px] bg-white rounded-3xl shadow-2xl flex flex-col overflow-hidden max-h-[calc(100vh-100px)] border border-slate-200">
           <div className="bg-white p-4 border-b border-slate-100 flex justify-between items-center">
@@ -756,7 +760,6 @@ export default function Map() {
         </div>
       )}
 
-      {/* 🚀 History Modal */}
       {historyModalOpen && (
         <div className="absolute inset-0 z-[10000] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md h-[80%] max-h-[600px] flex flex-col overflow-hidden">
@@ -829,14 +832,11 @@ export default function Map() {
         </div>
       )}
 
-      {/* 🚀 Login Modal */}
       {showLoginModal && (
         <div className="absolute inset-0 z-[9999] flex items-center justify-center bg-indigo-900">
           <div className="w-full max-w-md bg-white rounded-xl shadow-2xl p-8 m-4">
             <div className="text-center mb-6">
-              <div className="w-24 h-24 mx-auto mb-4 bg-white rounded-full shadow-md border-2 border-indigo-100 flex items-center justify-center overflow-hidden">
-                <MapIcon size={40} className="text-indigo-600" />
-              </div>
+              <img src="/logo/Map Ark.png" alt="Maps Ark Logo" onError={(e) => e.currentTarget.style.display='none'} className="w-24 h-24 mx-auto mb-4 object-contain rounded-full shadow-md border-2 border-indigo-100" />
               <h1 className="text-2xl font-bold text-slate-800">ចូលប្រើប្រព័ន្ធ</h1>
             </div>
             <form onSubmit={handleRealLogin} className="space-y-4">
