@@ -56,7 +56,6 @@ export default function Map() {
 
   const monthsList = ['ខែមករា', 'ខែកកុម្ភៈ', 'ខែមីនា', 'ខែមេសា', 'ខែឧសភា', 'ខែមិថុនា', 'ខែកក្កដា', 'ខែសីហា', 'ខែកញ្ញា', 'ខែតុលា', 'ខែវិច្ឆិកា', 'ខែធ្នូ'];
 
-  // 🚀 ឆែកមើល Session ពិតប្រាកដពេលបើក Web មកដល់
   useEffect(() => {
     const checkSession = async () => {
       const { data: { session } } = await supabaseClient.auth.getSession();
@@ -168,7 +167,11 @@ export default function Map() {
       L.control.zoom({ position: 'bottomright' }).addTo(mapInstance.current);
       L.tileLayer('https://{s}.google.com/vt/lyrs=s,h&x={x}&y={y}&z={z}', { maxZoom: 21, subdomains: ['mt0', 'mt1', 'mt2', 'mt3'] }).addTo(mapInstance.current);
 
-      mapInstance.current.pm.addControls({ drawMarker: false, drawCircleMarker: false, drawPolyline: false, drawRectangle: false, drawPolygon: false, drawCircle: false, drawText: false, editMode: false, dragMode: false, cutPolygon: false, removalMode: false, rotateMode: false });
+      // 🚀 ប្រើ Any ដើម្បីបិទភ្នែក TypeScript កុំឱ្យ Vercel គាំងពេល Build
+      const pmControls: any = { drawMarker: false, drawCircleMarker: false, drawPolyline: false, drawRectangle: false, drawPolygon: false, drawCircle: false, drawText: false, editMode: false, dragMode: false, cutPolygon: false, removalMode: false, rotateMode: false };
+      if (mapInstance.current.pm) {
+        (mapInstance.current.pm as any).addControls(pmControls);
+      }
 
       if (!mapInstance.current.getPane('bordersPane')) {
         mapInstance.current.createPane('bordersPane').style.zIndex = '400';
@@ -276,17 +279,17 @@ export default function Map() {
     return true;
   };
 
-  const drawPoint = () => { if(checkPermission()){ activeDrawTool.current = 'point'; mapInstance.current?.pm.disableDraw(); mapInstance.current?.pm.enableDraw('Marker', { snappable: true }); }};
-  const drawPolygon = () => { if(checkPermission()){ activeDrawTool.current = 'polygon'; mapInstance.current?.pm.disableDraw(); mapInstance.current?.pm.enableDraw('Polygon', { snappable: true }); }};
-  const drawRoad = () => { if(checkPermission()){ activeDrawTool.current = 'road'; mapInstance.current?.pm.disableDraw(); mapInstance.current?.pm.enableDraw('Line', { snappable: true }); }};
-  const drawBorder = () => { if(checkPermission()){ activeDrawTool.current = 'border'; mapInstance.current?.pm.disableDraw(); mapInstance.current?.pm.enableDraw('Polygon', { snappable: true }); }};
+  // 🚀 ប្រើ Any ដើម្បីបិទភ្នែក TypeScript ពេលប្រើ Tool Geoman
+  const drawPoint = () => { if(checkPermission()){ activeDrawTool.current = 'point'; mapInstance.current?.pm.disableDraw(); (mapInstance.current?.pm as any).enableDraw('Marker', { snappable: true }); }};
+  const drawPolygon = () => { if(checkPermission()){ activeDrawTool.current = 'polygon'; mapInstance.current?.pm.disableDraw(); (mapInstance.current?.pm as any).enableDraw('Polygon', { snappable: true }); }};
+  const drawRoad = () => { if(checkPermission()){ activeDrawTool.current = 'road'; mapInstance.current?.pm.disableDraw(); (mapInstance.current?.pm as any).enableDraw('Line', { snappable: true }); }};
+  const drawBorder = () => { if(checkPermission()){ activeDrawTool.current = 'border'; mapInstance.current?.pm.disableDraw(); (mapInstance.current?.pm as any).enableDraw('Polygon', { snappable: true }); }};
   
   const toggleEdit = () => { if(checkPermission()) mapInstance.current?.pm.toggleGlobalEditMode(); };
   const toggleCut = () => { if(checkPermission()) mapInstance.current?.pm.toggleGlobalCutMode(); };
   const toggleRotate = () => { if(checkPermission()) mapInstance.current?.pm.toggleGlobalRotateMode(); };
   const toggleRemove = () => { if(checkPermission()) mapInstance.current?.pm.toggleGlobalRemovalMode(); };
 
-  // 🚀 បច្ចេកវិទ្យា Update Local ដោយមិនបាច់ Refresh Data ស៊ី Quota
   const updateMarkerColorLocally = (id: string, colorHex: string) => {
     pointsLayer.current?.eachLayer((layer: any) => {
       if (layer.options.dbId === id) layer.setStyle({ fillColor: colorHex });
@@ -329,25 +332,12 @@ export default function Map() {
         lastPaidMonthIndex = targetMonthIndex;
         
         recordsToInsert.push({ 
-            household_id: selectedHome.id, 
-            custom_id: selectedHome.custom_id, 
-            customer_name: selectedHome.customer_name, 
-            amount: Number(selectedHome.monthly_fee) || 0, 
-            month: targetMonthNumber, 
-            year: targetYear, 
-            status: 'paid', 
-            zone: selectedHome.zone, 
-            collected_by: currentUserRef.current?.name || '', 
-            paid_at: now.toISOString()
+            household_id: selectedHome.id, custom_id: selectedHome.custom_id, customer_name: selectedHome.customer_name, amount: Number(selectedHome.monthly_fee) || 0, month: targetMonthNumber, year: targetYear, status: 'paid', zone: selectedHome.zone, collected_by: currentUserRef.current?.name || '', paid_at: now.toISOString()
         });
     }
 
-    // 🚀 Insert ចូល Payments (ត្រូវការ Login ពិតប្រាកដ)
     const { error: insertErr } = await supabaseClient.from('payments').insert(recordsToInsert);
-    if (insertErr) { 
-      alert(`❌ មានបញ្ហាក្នុងការកត់ត្រាការបង់ប្រាក់! Error: ${insertErr.message}`); 
-      return; 
-    }
+    if (insertErr) { alert(`❌ មានបញ្ហាក្នុងការកត់ត្រាការបង់ប្រាក់! Error: ${insertErr.message}`); return; }
 
     const nextMonthIdx = (lastPaidMonthIndex + 1) % 12;
     const nextMonthStr = monthsList[nextMonthIdx];
@@ -356,7 +346,7 @@ export default function Map() {
 
     if (!error) {
       alert('✅ ការបង់ប្រាក់ទទួលបានជោគជ័យ!');
-      updateMarkerColorLocally(selectedHome.id, '#2563eb'); // ប្តូរពណ៌ទៅខៀវភ្លាមៗ
+      updateMarkerColorLocally(selectedHome.id, '#2563eb'); 
       setEditForm({...editForm, status_color: 'blue', payment_month: nextMonthStr});
       setSelectedHome({...selectedHome, status_color: 'blue', payment_month: nextMonthStr});
     } else {
@@ -368,15 +358,8 @@ export default function Map() {
     if (!selectedHome) return;
     setHistoryModalOpen(true);
     setIsLoadingHistory(true);
-    
-    // ទាញទិន្នន័យពី Payments
     const { data, error } = await supabaseClient.from('payments').select('*').eq('household_id', selectedHome.id).order('created_at', { ascending: false });
-    
-    if (error) { 
-      alert(`❌ មិនអាចទាញយកប្រវត្តិបានទេ! Error: ${error.message}`);
-    } else if (data) { 
-      setHistoryData(data); 
-    }
+    if (error) { alert(`❌ មិនអាចទាញយកប្រវត្តិបានទេ! Error: ${error.message}`); } else if (data) { setHistoryData(data); }
     setIsLoadingHistory(false);
   };
 
@@ -386,11 +369,10 @@ export default function Map() {
     await supabaseClient.from('payments').delete().eq('id', paymentId);
     await supabaseClient.from('households').update({ status_color: 'yellow', payment_month: monthStr }).eq('id', selectedHome.id);
 
-    updateMarkerColorLocally(selectedHome.id, '#f59e0b'); // ប្តូរទៅពណ៌លឿងវិញភ្លាមៗ
+    updateMarkerColorLocally(selectedHome.id, '#f59e0b'); 
     setEditForm({...editForm, status_color: 'yellow', payment_month: monthStr});
     setSelectedHome({...selectedHome, status_color: 'yellow', payment_month: monthStr});
-    
-    handleOpenHistory(); // Refresh ផ្ទាំង History Modal
+    handleOpenHistory(); 
   };
 
   const saveRoadData = async () => {
@@ -413,14 +395,11 @@ export default function Map() {
     } else alert('រកមិនឃើញលេខកូដនេះទេ!');
   };
 
-  // 🚀 Login ពិតប្រាកដដោយប្រើ Supabase Auth
   const handleRealLogin = async (e: any) => {
     e.preventDefault();
     const email = e.target[0].value;
     const password = e.target[1].value;
-    
     const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
-    
     if (error) {
       alert('❌ មិនអាចចូលបានទេ៖ ' + error.message);
     } else if (data.session) {
@@ -507,7 +486,6 @@ export default function Map() {
         <div ref={mapRef} className="w-full h-full" />
       </main>
 
-      {/* 🚀 ផ្ទាំងអតិថិជន (Point Detail) ជួសជុលរចនាបថ និងមុខងារ Update លឿន */}
       {selectedHome && (
         <div className="absolute top-[80px] right-4 z-[9999] w-[380px] bg-white rounded-3xl shadow-2xl flex flex-col overflow-hidden max-h-[calc(100vh-100px)] border border-slate-200">
           <div className="bg-white p-4 border-b border-slate-100 flex justify-between items-center">
@@ -595,7 +573,6 @@ export default function Map() {
         </div>
       )}
 
-      {/* 🚀 History Modal (ទាញទិន្នន័យពី Payments ពិតប្រាកដ) */}
       {historyModalOpen && (
         <div className="absolute inset-0 z-[10000] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md h-[80%] max-h-[600px] flex flex-col overflow-hidden">
@@ -668,7 +645,7 @@ export default function Map() {
         </div>
       )}
 
-      {/* 🚀 Login Modal ពិតប្រាកដ ដោយវាយ Email ចូល */}
+      {/* 🚀 Login ពេញលេញ */}
       {showLoginModal && (
         <div className="absolute inset-0 z-[9999] flex items-center justify-center bg-indigo-900">
           <div className="w-full max-w-md bg-white rounded-xl shadow-2xl p-8 m-4">
