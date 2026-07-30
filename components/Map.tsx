@@ -30,10 +30,13 @@ export default function Map() {
   const [allData, setAllData] = useState<any[]>([]);
 
   const [isToolsPanelOpen, setIsToolsPanelOpen] = useState(false);
+
   const [selectedHome, setSelectedHome] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState('');
   
-  const [editForm, setEditForm] = useState({ custom_id: '', customer_name: '', monthly_fee: 0, zone: '', status_color: 'yellow', payment_month: 'ខែមករា', photo_url: '' });
+  const [editForm, setEditForm] = useState({ 
+    custom_id: '', customer_name: '', monthly_fee: 0, zone: '', status_color: 'yellow', payment_month: 'ខែមករា', photo_url: ''
+  });
 
   const [roadEditData, setRoadEditData] = useState<any>(null);
   const [payMonth, setPayMonth] = useState('ខែមករា');
@@ -63,16 +66,23 @@ export default function Map() {
     const checkSession = async () => {
       const { data: { session } } = await supabaseClient.auth.getSession();
       if (session) {
-        const { data: profile } = await supabaseClient.from('Profiles_Access').select('role, zone').eq('id', session.user.id).maybeSingle();
+        // 🚀 ទាញយកសិទ្ធិបន្ថែម can_edit_roof, can_edit_road, can_edit_border ពី Database
+        const { data: profile } = await supabaseClient.from('Profiles_Access').select('role, zone, can_edit_roof, can_edit_road, can_edit_border').eq('id', session.user.id).maybeSingle();
         const roleStr = profile?.role ? profile.role.toLowerCase().replace(' ', '_') : 'user';
-        setCurrentUser({ id: session.user.id, name: profile?.zone || session.user.email, role: roleStr });
+        setCurrentUser({ 
+            id: session.user.id, 
+            name: profile?.zone || session.user.email, 
+            role: roleStr,
+            can_edit_roof: profile?.can_edit_roof || false,
+            can_edit_road: profile?.can_edit_road || false,
+            can_edit_border: profile?.can_edit_border || false
+        });
         setShowLoginModal(false);
       }
     };
     checkSession();
   }, []);
 
-  // 🚀 ជំនួយការគូសផ្ទះ (អត់ចាំបាច់ Fetch ថ្មី)
   const addHouseholdToMap = (h: any) => {
     let layer: any;
     let colorHex = h.status_color === 'blue' ? '#2563eb' : h.status_color === 'red' ? '#dc2626' : h.status_color === 'black' ? '#020617' : '#f59e0b';
@@ -97,7 +107,6 @@ export default function Map() {
     }
   };
 
-  // 🚀 ជំនួយការគូសផ្លូវ (អត់ចាំបាច់ Fetch ថ្មី)
   const addRoadToMap = (r: any) => {
     if (r.geojson) {
       let roadColor = '#10b981'; 
@@ -120,7 +129,6 @@ export default function Map() {
     }
   };
 
-  // 🚀 ជំនួយការគូសព្រំដែន (អត់ចាំបាច់ Fetch ថ្មី)
   const addBorderToMap = (b: any) => {
     if (b.geojson) {
       const layer = L.geoJSON(b.geojson, { style: { color: '#ec4899', weight: 5, opacity: 0.8, dashArray: '8, 8', fillOpacity: 0.1 }, pane: 'bordersPane' }); 
@@ -132,7 +140,7 @@ export default function Map() {
           const newZoneName = prompt("កែប្រែឈ្មោះតំបន់ (Zone) សម្រាប់ព្រំដែននេះ៖", b.zone);
           if (newZoneName && newZoneName.trim() !== "" && newZoneName !== b.zone) {
               await supabaseClient.from('zone_borders').update({ zone: newZoneName.trim() }).eq('id', b.id);
-              fetchAndRenderData(); // សម្រាប់ព្រំដែន បើកែឈ្មោះឱ្យវារត់មួយសារទៅចុះ ព្រោះកម្រកែ
+              fetchAndRenderData(); 
           }
         });
       });
@@ -140,7 +148,6 @@ export default function Map() {
     }
   };
 
-  // 🚀 ទាញទិន្នន័យ (ហៅតែម្តងគត់ពេល Login រួច ឬបើក Web) ដោយប្រើ Promise.all ឱ្យលឿនរន្ទះ
   const fetchAndRenderData = async () => {
     if (pointsLayer.current) pointsLayer.current.clearLayers();
     if (polygonsLayer.current) polygonsLayer.current.clearLayers();
@@ -192,7 +199,6 @@ export default function Map() {
 
       fetchAndRenderData();
 
-      // 🚀 ពេលគូសរួច Insert ចូល DB មួយបន្ទាត់ រួច Update Local ចោល (លែង Fetch ស៊ី Quota)
       mapInstance.current.on('pm:create', async (e: any) => {
         if (!currentUserRef.current) { alert('🔒 សូមចូលគណនី (Login) ជាមុនសិន។'); mapInstance.current?.removeLayer(e.layer); return; }
 
@@ -204,7 +210,7 @@ export default function Map() {
 
         if (shapeType === 'road') {
             setRoadEditData({ isNew: true, geojson: geojson, name: '', width: '', address: '', road_type: 'Land road' });
-            mapInstance.current?.removeLayer(e.layer); // លុបផ្ទាំងគូសបណ្តោះអាសន្ន
+            mapInstance.current?.removeLayer(e.layer);
             (mapInstance.current?.pm as any)?.disableDraw();
             return;
         } 
@@ -213,7 +219,7 @@ export default function Map() {
             mapInstance.current?.removeLayer(e.layer);
             if (!zoneName) return; 
             const { data } = await supabaseClient.from('zone_borders').insert({ geojson: geojson, zone: zoneName }).select().single();
-            if(data) addBorderToMap(data); // គូសព្រំដែនថ្មីលើផែនទីភ្លាមៗ
+            if(data) addBorderToMap(data); 
         } 
         else {
             let dbShape = shapeType === 'polygon' ? 'polygon' : 'point';
@@ -221,14 +227,13 @@ export default function Map() {
             const { data } = await supabaseClient.from('households').insert({ lat: center.lat, lng: center.lng, custom_id: customId, status_color: 'yellow', shape_type: dbShape, geojson: geojson, payment_month: 'ខែមករា', monthly_fee: 10000 }).select().single();
             
             if(data) {
-                setAllData(prev => [...prev, data]); // Update របាយការណ៍បណ្តោះអាសន្ន
-                addHouseholdToMap(data); // គូសផ្ទះថ្មីលើផែនទីភ្លាមៗ
+                setAllData(prev => [...prev, data]); 
+                addHouseholdToMap(data); 
             }
         }
         (mapInstance.current?.pm as any)?.disableDraw();
       });
 
-      // 🚀 ពេលលុប លុបក្នុង DB ចោល (Geoman វាលុបលើផែនទីស្រាប់ហើយ អត់ចាំបាច់ Fetch)
       mapInstance.current.on('pm:remove', async (e: any) => {
         if (!currentUserRef.current) { alert('🔒 សូមចូលគណនីជាមុនសិន។'); return; }
         const id = e.layer.options.dbId;
@@ -240,7 +245,6 @@ export default function Map() {
         else await supabaseClient.from('households').delete().eq('id', id);
       });
 
-      // 🚀 ពេលអាប់ដេត Update ចូល DB (Geoman វា Move លើផែនទីស្រាប់ហើយ អត់ចាំបាច់ Fetch)
       mapInstance.current.on('pm:update', async (e: any) => {
         if (!currentUserRef.current) { alert('🔒 សូមចូលគណនីជាមុនសិន។'); return; }
         const id = e.layer.options.dbId;
@@ -368,16 +372,14 @@ export default function Map() {
     handleOpenHistory(); 
   };
 
-  // 🚀 ជំនួយការរក្សាទុកផ្លូវដោយមិនបាច់ Fetch (Local Update)
   const saveRoadData = async () => {
       if (roadEditData.isNew) {
           const { data } = await supabaseClient.from('roads').insert({ geojson: roadEditData.geojson, name: roadEditData.name, width: roadEditData.width, address: roadEditData.address, road_type: roadEditData.road_type }).select().single();
-          if (data) addRoadToMap(data); // គូសផ្លូវថ្មីភ្លាមៗ
+          if (data) addRoadToMap(data); 
           setRoadToggle(true);
       } else {
           const { data } = await supabaseClient.from('roads').update({ name: roadEditData.name, width: roadEditData.width, address: roadEditData.address, road_type: roadEditData.road_type }).eq('id', roadEditData.id).select().single();
           if (data) {
-              // លុបផ្លូវចាស់ដែលនៅលើផែនទី រួចគូសផ្លូវថ្មីត្រួតពីលើ
               roadsLayer.current?.eachLayer((l: any) => { if(l.options.dbId === roadEditData.id) roadsLayer.current?.removeLayer(l); });
               addRoadToMap(data); 
           }
@@ -402,9 +404,17 @@ export default function Map() {
     const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
     if (error) { alert('❌ មិនអាចចូលបានទេ៖ ' + error.message); } 
     else if (data.session) {
-      const { data: profile } = await supabaseClient.from('Profiles_Access').select('role, zone').eq('id', data.user.id).maybeSingle();
+      // 🚀 ទាញយកសិទ្ធិបន្ថែម can_edit_roof, can_edit_road, can_edit_border ពី Database
+      const { data: profile } = await supabaseClient.from('Profiles_Access').select('role, zone, can_edit_roof, can_edit_road, can_edit_border').eq('id', data.user.id).maybeSingle();
       const roleStr = profile?.role ? profile.role.toLowerCase().replace(' ', '_') : 'user';
-      setCurrentUser({ name: profile?.zone || email, role: roleStr, id: data.user.id });
+      setCurrentUser({ 
+          name: profile?.zone || email, 
+          role: roleStr, 
+          id: data.user.id,
+          can_edit_roof: profile?.can_edit_roof || false,
+          can_edit_road: profile?.can_edit_road || false,
+          can_edit_border: profile?.can_edit_border || false
+      });
       setShowLoginModal(false); fetchAndRenderData();
     }
   };
@@ -525,41 +535,51 @@ export default function Map() {
             <div className="flex justify-center"><Toggle enabled={pointToggle} setEnabled={setPointToggle} /></div>
           </div>
 
-          <div className="bg-white/90 backdrop-blur-xl border border-white shadow-lg rounded-3xl p-5">
-            <h3 className="text-center font-black text-slate-700 text-sm border-b-2 border-indigo-500/20 pb-3 mb-4">🛑 ដំបូល (Polygon)</h3>
-            <div className="flex justify-between mb-4">
-              <button onClick={drawPolygon} className="flex flex-col items-center gap-1 cursor-pointer text-indigo-600 hover:scale-110"><Hexagon size={20} /><span className="text-[10px] font-bold text-slate-600">Add</span></button>
-              <button onClick={toggleEdit} className="flex flex-col items-center gap-1 cursor-pointer text-amber-500 hover:scale-110"><MapPin size={20} /><span className="text-[10px] font-bold text-slate-600">Edit</span></button>
-              <button onClick={toggleCut} className="flex flex-col items-center gap-1 cursor-pointer text-sky-500 hover:scale-110"><Scissors size={20} /><span className="text-[10px] font-bold text-slate-600">Cut</span></button>
-              <button onClick={toggleRemove} className="flex flex-col items-center gap-1 cursor-pointer text-rose-500 hover:scale-110"><Eraser size={20} /><span className="text-[10px] font-bold text-slate-600">Remove</span></button>
-              <button onClick={toggleRotate} className="flex flex-col items-center gap-1 cursor-pointer text-emerald-500 hover:scale-110"><RotateCw size={20} /><span className="text-[10px] font-bold text-slate-600">Rotate</span></button>
+          {/* 🚀 លាក់ផ្ទាំង Polygon បើគណនីនោះគ្មានសិទ្ធិ ឬដាក់ FALSE ក្នុង Database */}
+          {(!currentUser || currentUser?.role === 'super_admin' || currentUser?.can_edit_roof) && (
+            <div className="bg-white/90 backdrop-blur-xl border border-white shadow-lg rounded-3xl p-5">
+              <h3 className="text-center font-black text-slate-700 text-sm border-b-2 border-indigo-500/20 pb-3 mb-4">🛑 ដំបូល (Polygon)</h3>
+              <div className="flex justify-between mb-4">
+                <button onClick={drawPolygon} className="flex flex-col items-center gap-1 cursor-pointer text-indigo-600 hover:scale-110"><Hexagon size={20} /><span className="text-[10px] font-bold text-slate-600">Add</span></button>
+                <button onClick={toggleEdit} className="flex flex-col items-center gap-1 cursor-pointer text-amber-500 hover:scale-110"><MapPin size={20} /><span className="text-[10px] font-bold text-slate-600">Edit</span></button>
+                <button onClick={toggleCut} className="flex flex-col items-center gap-1 cursor-pointer text-sky-500 hover:scale-110"><Scissors size={20} /><span className="text-[10px] font-bold text-slate-600">Cut</span></button>
+                <button onClick={toggleRemove} className="flex flex-col items-center gap-1 cursor-pointer text-rose-500 hover:scale-110"><Eraser size={20} /><span className="text-[10px] font-bold text-slate-600">Remove</span></button>
+                <button onClick={toggleRotate} className="flex flex-col items-center gap-1 cursor-pointer text-emerald-500 hover:scale-110"><RotateCw size={20} /><span className="text-[10px] font-bold text-slate-600">Rotate</span></button>
+              </div>
+              <div className="flex justify-center"><Toggle enabled={polygonToggle} setEnabled={setPolygonToggle} /></div>
             </div>
-            <div className="flex justify-center"><Toggle enabled={polygonToggle} setEnabled={setPolygonToggle} /></div>
-          </div>
+          )}
 
-          <div className="bg-white/90 backdrop-blur-xl border border-white shadow-lg rounded-3xl p-5">
-            <h3 className="text-center font-black text-slate-700 text-sm border-b-2 border-indigo-500/20 pb-3 mb-4">🛣️ ផ្លូវ (Road)</h3>
-            <div className="flex justify-around mb-4">
-              <button onClick={drawRoad} className="flex flex-col items-center gap-1.5 cursor-pointer group"><div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-indigo-600 shadow-sm border border-slate-200 group-hover:border-indigo-400 transition-all"><Slash size={22} /></div><span className="text-[11px] font-bold text-slate-600">Add Road</span></button>
-              <button onClick={toggleEdit} className="flex flex-col items-center gap-1.5 cursor-pointer group"><div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-amber-500 shadow-sm border border-slate-200 group-hover:border-amber-400 transition-all"><Move size={22} /></div><span className="text-[11px] font-bold text-slate-600">Edit Road</span></button>
-              <button onClick={toggleRemove} className="flex flex-col items-center gap-1.5 cursor-pointer group"><div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-rose-500 shadow-sm border border-slate-200 group-hover:border-rose-400 transition-all"><Ban size={22} /></div><span className="text-[11px] font-bold text-slate-600">Delete</span></button>
+          {/* 🚀 លាក់ផ្ទាំង Road បើគណនីនោះគ្មានសិទ្ធិ ឬដាក់ FALSE ក្នុង Database */}
+          {(!currentUser || currentUser?.role === 'super_admin' || currentUser?.can_edit_road) && (
+            <div className="bg-white/90 backdrop-blur-xl border border-white shadow-lg rounded-3xl p-5">
+              <h3 className="text-center font-black text-slate-700 text-sm border-b-2 border-indigo-500/20 pb-3 mb-4">🛣️ ផ្លូវ (Road)</h3>
+              <div className="flex justify-around mb-4">
+                <button onClick={drawRoad} className="flex flex-col items-center gap-1.5 cursor-pointer group"><div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-indigo-600 shadow-sm border border-slate-200 group-hover:border-indigo-400 transition-all"><Slash size={22} /></div><span className="text-[11px] font-bold text-slate-600">Add Road</span></button>
+                <button onClick={toggleEdit} className="flex flex-col items-center gap-1.5 cursor-pointer group"><div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-amber-500 shadow-sm border border-slate-200 group-hover:border-amber-400 transition-all"><Move size={22} /></div><span className="text-[11px] font-bold text-slate-600">Edit Road</span></button>
+                <button onClick={toggleRemove} className="flex flex-col items-center gap-1.5 cursor-pointer group"><div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-rose-500 shadow-sm border border-slate-200 group-hover:border-rose-400 transition-all"><Ban size={22} /></div><span className="text-[11px] font-bold text-slate-600">Delete</span></button>
+              </div>
+              <div className="flex justify-center"><Toggle enabled={roadToggle} setEnabled={setRoadToggle} /></div>
             </div>
-            <div className="flex justify-center"><Toggle enabled={roadToggle} setEnabled={setRoadToggle} /></div>
-          </div>
+          )}
 
-          <div className="bg-white/90 backdrop-blur-xl border border-white shadow-lg rounded-3xl p-5">
-            <h3 className="text-center font-black text-slate-700 text-sm border-b-2 border-indigo-500/20 pb-3 mb-4">🌐 ព្រំដែន (Border)</h3>
-            <div className="flex justify-between mb-5">
-              <button onClick={drawBorder} className="flex flex-col items-center gap-1 cursor-pointer text-indigo-600 hover:scale-110"><Hexagon size={20} /><span className="text-[10px] font-bold text-slate-600">Add</span></button>
-              <button onClick={toggleEdit} className="flex flex-col items-center gap-1 cursor-pointer text-amber-500 hover:scale-110"><MapPin size={20} /><span className="text-[10px] font-bold text-slate-600">Edite</span></button>
-              <button onClick={toggleCut} className="flex flex-col items-center gap-1 cursor-pointer text-sky-500 hover:scale-110"><Scissors size={20} /><span className="text-[10px] font-bold text-slate-600">Cut</span></button>
-              <button onClick={toggleRemove} className="flex flex-col items-center gap-1 cursor-pointer text-rose-500 hover:scale-110"><Eraser size={20} /><span className="text-[10px] font-bold text-slate-600">Remove</span></button>
-              <button onClick={toggleRotate} className="flex flex-col items-center gap-1 cursor-pointer text-emerald-500 hover:scale-110"><RotateCw size={20} /><span className="text-[10px] font-bold text-slate-600">Rotate</span></button>
+          {/* 🚀 លាក់ផ្ទាំង Border បើគណនីនោះគ្មានសិទ្ធិ ឬដាក់ FALSE ក្នុង Database */}
+          {(!currentUser || currentUser?.role === 'super_admin' || currentUser?.can_edit_border) && (
+            <div className="bg-white/90 backdrop-blur-xl border border-white shadow-lg rounded-3xl p-5">
+              <h3 className="text-center font-black text-slate-700 text-sm border-b-2 border-indigo-500/20 pb-3 mb-4">🌐 ព្រំដែន (Border)</h3>
+              <div className="flex justify-between mb-5">
+                <button onClick={drawBorder} className="flex flex-col items-center gap-1 cursor-pointer text-indigo-600 hover:scale-110"><Hexagon size={20} /><span className="text-[10px] font-bold text-slate-600">Add</span></button>
+                <button onClick={toggleEdit} className="flex flex-col items-center gap-1 cursor-pointer text-amber-500 hover:scale-110"><MapPin size={20} /><span className="text-[10px] font-bold text-slate-600">Edite</span></button>
+                <button onClick={toggleCut} className="flex flex-col items-center gap-1 cursor-pointer text-sky-500 hover:scale-110"><Scissors size={20} /><span className="text-[10px] font-bold text-slate-600">Cut</span></button>
+                <button onClick={toggleRemove} className="flex flex-col items-center gap-1 cursor-pointer text-rose-500 hover:scale-110"><Eraser size={20} /><span className="text-[10px] font-bold text-slate-600">Remove</span></button>
+                <button onClick={toggleRotate} className="flex flex-col items-center gap-1 cursor-pointer text-emerald-500 hover:scale-110"><RotateCw size={20} /><span className="text-[10px] font-bold text-slate-600">Rotate</span></button>
+              </div>
+              <div className="flex flex-col gap-3">
+                <div className="flex justify-between items-center"><span className="text-[11px] font-bold text-slate-600 flex items-center gap-2"><Spline size={16} className="text-purple-500"/> ព្រំដែនគូសផ្ទាល់</span><Toggle enabled={borderLive} setEnabled={setBorderLive} /></div>
+              </div>
             </div>
-            <div className="flex flex-col gap-3">
-              <div className="flex justify-between items-center"><span className="text-[11px] font-bold text-slate-600 flex items-center gap-2"><Spline size={16} className="text-purple-500"/> ព្រំដែនគូសផ្ទាល់</span><Toggle enabled={borderLive} setEnabled={setBorderLive} /></div>
-            </div>
-          </div>
+          )}
+
         </div>
         <main className="flex-1 relative z-0 h-full bg-slate-100">
           <div ref={mapRef} className="w-full h-full" />
