@@ -4,7 +4,7 @@ import 'leaflet/dist/leaflet.css';
 import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css';
 import L from 'leaflet';
 import '@geoman-io/leaflet-geoman-free';
-import { MapPin, Eraser, Hexagon, Scissors, RotateCw, Search, Slash, Move, ShieldAlert, LogIn, LogOut, User, PieChart, Ban, Save, X, Spline, Download, Map as MapIcon, Printer, History, Edit3, DollarSign, Clock, Camera, Road, Sliders, CheckCircle, RotateCcw, Home, XCircle, Wallet, CalendarDays, ChevronLeft, ChevronRight, List, Layers } from 'lucide-react';
+import { MapPin, Eraser, Hexagon, Scissors, RotateCw, Search, Slash, Move, LogIn, LogOut, User, PieChart, Ban, Save, X, Spline, Download, Map as MapIcon, Printer, History, DollarSign, Clock, Camera, Road, Sliders, CheckCircle, RotateCcw, Home, XCircle, Wallet, CalendarDays, ChevronLeft, ChevronRight, List, Layers, Monitor, Smartphone, Navigation } from 'lucide-react';
 import { supabaseClient } from '../utils/supabase';
 
 const Toggle = ({ enabled, setEnabled }: { enabled: boolean, setEnabled: (val: boolean) => void }) => (
@@ -21,23 +21,23 @@ export default function Map() {
   const polygonsLayer = useRef<L.FeatureGroup | null>(null);
   const roadsLayer = useRef<L.FeatureGroup | null>(null);
   const bordersLayer = useRef<L.FeatureGroup | null>(null);
+  const locationMarkerRef = useRef<L.Marker | null>(null); // 🚀 សម្រាប់ផ្ទុក Live Location Dot
 
   const activeDrawTool = useRef<string>('point'); 
 
   const [currentUser, setCurrentUser] = useState<any>(null); 
   const [showLoginModal, setShowLoginModal] = useState(true);
+  
+  // 🚀 State ថ្មីសម្រាប់ជម្រើស PC ឫ Mobile
+  const [deviceChoice, setDeviceChoice] = useState<'pc' | 'mobile' | null>(null); 
+
   const [activeView, setActiveView] = useState<'map' | 'report'>('map');
   const [allData, setAllData] = useState<any[]>([]);
-
   const [isToolsPanelOpen, setIsToolsPanelOpen] = useState(false);
-
   const [selectedHome, setSelectedHome] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState('');
   
-  const [editForm, setEditForm] = useState({ 
-    custom_id: '', customer_name: '', monthly_fee: 0, zone: '', status_color: 'yellow', payment_month: 'ខែមករា', photo_url: ''
-  });
-
+  const [editForm, setEditForm] = useState({ custom_id: '', customer_name: '', monthly_fee: 0, zone: '', status_color: 'yellow', payment_month: 'ខែមករា', photo_url: '' });
   const [roadEditData, setRoadEditData] = useState<any>(null);
   const [payMonth, setPayMonth] = useState('ខែមករា');
   const [payNumMonths, setPayNumMonths] = useState(1);
@@ -84,6 +84,46 @@ export default function Map() {
     checkSession();
   }, []);
 
+  // 🚀 មុខងារ Live Location (ដើរតែពេលជ្រើសរើស Mobile)
+  useEffect(() => {
+    if (deviceChoice === 'mobile' && mapInstance.current) {
+        mapInstance.current.locate({ watch: true, enableHighAccuracy: true });
+        
+        mapInstance.current.on('locationfound', (e: any) => {
+            if (!locationMarkerRef.current) {
+                // បង្កើតចំនុចពណ៌ខៀវមានរង្វង់លោតភ្លឹបភ្លែត
+                const liveIcon = L.divIcon({
+                    className: 'clear-default-icon',
+                    html: `<div class="live-location-pulse"></div><div class="live-location-dot"></div>`,
+                    iconSize: [24, 24],
+                    iconAnchor: [12, 12]
+                });
+                locationMarkerRef.current = L.marker(e.latlng, { icon: liveIcon }).addTo(mapInstance.current!);
+                mapInstance.current?.flyTo(e.latlng, 17, { animate: true, duration: 1.5 }); // រត់ទៅរកទីតាំងដំបូង
+            } else {
+                locationMarkerRef.current.setLatLng(e.latlng); // អាប់ដេតទីតាំងថ្មីរលូនៗពេលដើរ
+            }
+        });
+
+        mapInstance.current.on('locationerror', (e: any) => {
+            console.warn("មិនអាចចាប់ទីតាំងបានទេ៖ ", e.message);
+        });
+    } else if (deviceChoice === 'pc' && mapInstance.current) {
+        mapInstance.current.stopLocate();
+        if (locationMarkerRef.current) {
+            mapInstance.current.removeLayer(locationMarkerRef.current);
+            locationMarkerRef.current = null;
+        }
+    }
+  }, [deviceChoice]);
+
+  // 🚀 ប៊ូតុងទាញផែនទីមកទីតាំងខ្ញុំវិញ (Locate Me Button)
+  const handleLocateMe = () => {
+      if (deviceChoice === 'mobile' && mapInstance.current) {
+          mapInstance.current.locate({ setView: true, maxZoom: 18, enableHighAccuracy: true });
+      }
+  };
+
   const addHouseholdToMap = (h: any) => {
     let layer: any;
     let colorHex = h.status_color === 'blue' ? '#2563eb' : h.status_color === 'red' ? '#dc2626' : h.status_color === 'black' ? '#020617' : '#f59e0b';
@@ -101,9 +141,7 @@ export default function Map() {
       layer.on('click', () => {
         setSelectedHome(h); 
         setEditForm({ custom_id: h.custom_id || '', customer_name: h.customer_name || '', monthly_fee: h.monthly_fee || 0, zone: h.zone || '', status_color: h.status_color || 'yellow', payment_month: h.payment_month || 'ខែមករា', photo_url: h.photo_url || '' }); 
-        setPayMonth(h.payment_month || 'ខែមករា'); 
-        setPayNumMonths(1);
-        setIsManualEditOpen(false); 
+        setPayMonth(h.payment_month || 'ខែមករា'); setPayNumMonths(1); setIsManualEditOpen(false); 
       });
     }
   };
@@ -121,10 +159,7 @@ export default function Map() {
       layer.bindTooltip(`<div class="text-center"><b>${r.name || 'មិនមានឈ្មោះផ្លូវ'}</b><br><span class="text-xs text-slate-500">${r.road_type || 'Land road'} | ទំហំ: ${r.width || 'មិនបញ្ជាក់'}</span></div>`, {sticky: true, className: 'font-bold'});
       layer.eachLayer((l: any) => { 
         l.options.dbId = r.id; l.options.dbType = 'road'; 
-        l.on('dblclick', () => {
-          if(!currentUserRef.current) return;
-          setRoadEditData({ isNew: false, id: r.id, name: r.name || '', width: r.width || '', address: r.address || '', road_type: r.road_type || 'Land road' });
-        });
+        l.on('dblclick', () => { if(!currentUserRef.current) return; setRoadEditData({ isNew: false, id: r.id, name: r.name || '', width: r.width || '', address: r.address || '', road_type: r.road_type || 'Land road' }); });
       });
       if(roadsLayer.current) layer.addTo(roadsLayer.current);
     }
@@ -149,38 +184,26 @@ export default function Map() {
     }
   };
 
-  // 🚀 SERVER-SIDE FILTERING (ទាញយកតែទិន្នន័យចាំបាច់ សន្សំ Quota និងលឿន)
   const fetchAndRenderData = async (user = currentUserRef.current) => {
-    if (!user) return; // បើអត់ទាន់ Login កុំឱ្យវាទាញឱ្យសោះ
+    if (!user) return; 
 
     if (pointsLayer.current) pointsLayer.current.clearLayers();
     if (polygonsLayer.current) polygonsLayer.current.clearLayers();
     if (roadsLayer.current) roadsLayer.current.clearLayers();
     if (bordersLayer.current) bordersLayer.current.clearLayers();
 
-    // បង្កើត Query សម្រាប់ទាញទិន្នន័យ
     let householdQuery = supabaseClient.from('households').select('*');
     let borderQuery = supabaseClient.from('zone_borders').select('*');
-    let roadQuery = supabaseClient.from('roads').select('*'); // ផ្លូវជាទូទៅមនុស្សភាគច្រើនឱ្យឃើញទាំងអស់ តែបងអាចកំណត់បាន
+    let roadQuery = supabaseClient.from('roads').select('*'); 
 
-    // 🚀 បើមិនមែនជា Super Admin ត្រូវ Filter ចេញពី Database ផ្ទាល់តែម្តង
     if (user.role !== 'super_admin') {
        householdQuery = householdQuery.eq('zone', user.name);
        borderQuery = borderQuery.eq('zone', user.name);
     }
 
-    // ទាញយកក្នុងពេលតែមួយដោយប្រើ Promise.all
-    const [householdsRes, roadsRes, bordersRes] = await Promise.all([
-      householdQuery,
-      roadQuery,
-      borderQuery
-    ]);
+    const [householdsRes, roadsRes, bordersRes] = await Promise.all([ householdQuery, roadQuery, borderQuery ]);
 
-    if (householdsRes.data) {
-      setAllData(householdsRes.data);
-      householdsRes.data.forEach(addHouseholdToMap);
-    }
-    
+    if (householdsRes.data) { setAllData(householdsRes.data); householdsRes.data.forEach(addHouseholdToMap); }
     if (roadsRes.data) roadsRes.data.forEach(addRoadToMap); 
     if (bordersRes.data) bordersRes.data.forEach(addBorderToMap);
   };
@@ -239,15 +262,9 @@ export default function Map() {
         else {
             let dbShape = shapeType === 'polygon' ? 'polygon' : 'point';
             mapInstance.current?.removeLayer(e.layer);
-
             const userZone = currentUserRef.current?.role !== 'super_admin' ? currentUserRef.current?.name : '';
-
             const { data } = await supabaseClient.from('households').insert({ lat: center.lat, lng: center.lng, custom_id: customId, status_color: 'yellow', shape_type: dbShape, geojson: geojson, payment_month: 'ខែមករា', monthly_fee: 10000, zone: userZone }).select().single();
-            
-            if(data) {
-                setAllData(prev => [...prev, data]); 
-                addHouseholdToMap(data); 
-            }
+            if(data) { setAllData(prev => [...prev, data]); addHouseholdToMap(data); }
         }
         (mapInstance.current?.pm as any)?.disableDraw();
       });
@@ -257,7 +274,6 @@ export default function Map() {
         const id = e.layer.options.dbId;
         const dbType = e.layer.options.dbType;
         if (!id) return;
-        
         if (dbType === 'road') await supabaseClient.from('roads').delete().eq('id', id);
         else if (dbType === 'border') await supabaseClient.from('zone_borders').delete().eq('id', id);
         else await supabaseClient.from('households').delete().eq('id', id);
@@ -269,7 +285,6 @@ export default function Map() {
         const dbType = e.layer.options.dbType;
         if (!id) return;
         const geojson = e.layer.toGeoJSON();
-        
         if (dbType === 'road') await supabaseClient.from('roads').update({ geojson: geojson }).eq('id', id);
         else if (dbType === 'border') await supabaseClient.from('zone_borders').update({ geojson: geojson }).eq('id', id);
         else {
@@ -308,10 +323,7 @@ export default function Map() {
     }
   }, [borderLive]);
 
-  const checkPermission = () => {
-    if (!currentUserRef.current) { alert('🔒 សូមចុច "ចូលគណនី" (Login) ជាមុនសិន!'); setShowLoginModal(true); return false; }
-    return true;
-  };
+  const checkPermission = () => { if (!currentUserRef.current) { alert('🔒 សូមចុច "ចូលគណនី" (Login) ជាមុនសិន!'); setShowLoginModal(true); return false; } return true; };
 
   const drawPoint = () => { if(checkPermission()){ activeDrawTool.current = 'point'; (mapInstance.current?.pm as any)?.disableDraw(); (mapInstance.current?.pm as any)?.enableDraw('Marker', { snappable: true }); }};
   const drawPolygon = () => { if(checkPermission()){ activeDrawTool.current = 'polygon'; (mapInstance.current?.pm as any)?.disableDraw(); (mapInstance.current?.pm as any)?.enableDraw('Polygon', { snappable: true }); }};
@@ -333,8 +345,7 @@ export default function Map() {
     const { error } = await supabaseClient.from('households').update({ custom_id: editForm.custom_id, customer_name: editForm.customer_name, monthly_fee: editForm.monthly_fee, zone: editForm.zone, status_color: editForm.status_color, payment_month: editForm.payment_month }).eq('id', selectedHome.id);
     if (!error) { 
       let colorHex = editForm.status_color === 'blue' ? '#2563eb' : editForm.status_color === 'red' ? '#dc2626' : editForm.status_color === 'black' ? '#020617' : '#f59e0b';
-      updateMarkerColorLocally(selectedHome.id, colorHex);
-      setSelectedHome({ ...selectedHome, ...editForm }); alert('✅ រក្សាទុកព័ត៌មានអតិថិជនបានជោគជ័យ!'); 
+      updateMarkerColorLocally(selectedHome.id, colorHex); setSelectedHome({ ...selectedHome, ...editForm }); alert('✅ រក្សាទុកព័ត៌មានអតិថិជនបានជោគជ័យ!'); 
     } else { alert(`❌ មានបញ្ហាក្នុងការរក្សាទុក! Error: ${error.message}`); }
   };
 
@@ -343,14 +354,10 @@ export default function Map() {
     const startIdx = monthsList.indexOf(payMonth);
     if (startIdx === -1) { alert("សូមជ្រើសរើសខែបង់ប្រាក់!"); return; }
 
-    const recordsToInsert = [];
-    let lastPaidMonthIndex = startIdx;
-    const now = new Date();
+    const recordsToInsert = []; let lastPaidMonthIndex = startIdx; const now = new Date();
 
     for (let i = 0; i < payNumMonths; i++) {
-        let targetMonthIndex = (startIdx + i) % 12;
-        let targetMonthNumber = targetMonthIndex + 1; 
-        let targetYear = now.getFullYear();
+        let targetMonthIndex = (startIdx + i) % 12; let targetMonthNumber = targetMonthIndex + 1; let targetYear = now.getFullYear();
         if (startIdx + i > 11) { targetYear += Math.floor((startIdx + i) / 12); }
         lastPaidMonthIndex = targetMonthIndex;
         recordsToInsert.push({ household_id: selectedHome.id, custom_id: selectedHome.custom_id, customer_name: selectedHome.customer_name, amount: Number(selectedHome.monthly_fee) || 0, month: targetMonthNumber, year: targetYear, status: 'paid', zone: selectedHome.zone, collected_by: currentUserRef.current?.name || '', paid_at: now.toISOString() });
@@ -359,22 +366,18 @@ export default function Map() {
     const { error: insertErr } = await supabaseClient.from('payments').insert(recordsToInsert);
     if (insertErr) { alert(`❌ មានបញ្ហាក្នុងការកត់ត្រាការបង់ប្រាក់! Error: ${insertErr.message}`); return; }
 
-    const nextMonthIdx = (lastPaidMonthIndex + 1) % 12;
-    const nextMonthStr = monthsList[nextMonthIdx];
+    const nextMonthIdx = (lastPaidMonthIndex + 1) % 12; const nextMonthStr = monthsList[nextMonthIdx];
     const { error } = await supabaseClient.from('households').update({ status_color: 'blue', payment_month: nextMonthStr }).eq('id', selectedHome.id);
 
     if (!error) {
-      alert('✅ ការបង់ប្រាក់ទទួលបានជោគជ័យ!');
-      updateMarkerColorLocally(selectedHome.id, '#2563eb'); 
-      setEditForm({...editForm, status_color: 'blue', payment_month: nextMonthStr});
-      setSelectedHome({...selectedHome, status_color: 'blue', payment_month: nextMonthStr});
+      alert('✅ ការបង់ប្រាក់ទទួលបានជោគជ័យ!'); updateMarkerColorLocally(selectedHome.id, '#2563eb'); 
+      setEditForm({...editForm, status_color: 'blue', payment_month: nextMonthStr}); setSelectedHome({...selectedHome, status_color: 'blue', payment_month: nextMonthStr});
     } else { alert(`❌ បរាជ័យក្នុងការ Update ស្ថានភាពផ្ទះ! Error: ${error.message}`); }
   };
 
   const handleOpenHistory = async () => {
     if (!selectedHome) return;
-    setHistoryModalOpen(true);
-    setIsLoadingHistory(true);
+    setHistoryModalOpen(true); setIsLoadingHistory(true);
     const { data, error } = await supabaseClient.from('payments').select('*').eq('household_id', selectedHome.id).order('created_at', { ascending: false });
     if (error) { alert(`❌ មិនអាចទាញយកប្រវត្តិបានទេ! Error: ${error.message}`); } else if (data) { setHistoryData(data); }
     setIsLoadingHistory(false);
@@ -384,23 +387,17 @@ export default function Map() {
     if (!confirm(`តើអ្នកពិតជាចង់បោះបង់ការបង់ប្រាក់ខែ ${monthStr} នេះមែនទេ?`)) return;
     await supabaseClient.from('payments').delete().eq('id', paymentId);
     await supabaseClient.from('households').update({ status_color: 'yellow', payment_month: monthStr }).eq('id', selectedHome.id);
-    updateMarkerColorLocally(selectedHome.id, '#f59e0b'); 
-    setEditForm({...editForm, status_color: 'yellow', payment_month: monthStr});
-    setSelectedHome({...selectedHome, status_color: 'yellow', payment_month: monthStr});
+    updateMarkerColorLocally(selectedHome.id, '#f59e0b'); setEditForm({...editForm, status_color: 'yellow', payment_month: monthStr}); setSelectedHome({...selectedHome, status_color: 'yellow', payment_month: monthStr});
     handleOpenHistory(); 
   };
 
   const saveRoadData = async () => {
       if (roadEditData.isNew) {
           const { data } = await supabaseClient.from('roads').insert({ geojson: roadEditData.geojson, name: roadEditData.name, width: roadEditData.width, address: roadEditData.address, road_type: roadEditData.road_type }).select().single();
-          if (data) addRoadToMap(data); 
-          setRoadToggle(true);
+          if (data) addRoadToMap(data); setRoadToggle(true);
       } else {
           const { data } = await supabaseClient.from('roads').update({ name: roadEditData.name, width: roadEditData.width, address: roadEditData.address, road_type: roadEditData.road_type }).eq('id', roadEditData.id).select().single();
-          if (data) {
-              roadsLayer.current?.eachLayer((l: any) => { if(l.options.dbId === roadEditData.id) roadsLayer.current?.removeLayer(l); });
-              addRoadToMap(data); 
-          }
+          if (data) { roadsLayer.current?.eachLayer((l: any) => { if(l.options.dbId === roadEditData.id) roadsLayer.current?.removeLayer(l); }); addRoadToMap(data); }
       }
       setRoadEditData(null); 
   };
@@ -417,60 +414,38 @@ export default function Map() {
 
   const handleRealLogin = async (e: any) => {
     e.preventDefault();
-    const email = e.target[0].value;
-    const password = e.target[1].value;
+    const email = e.target[0].value; const password = e.target[1].value;
     const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
     if (error) { alert('❌ មិនអាចចូលបានទេ៖ ' + error.message); } 
     else if (data.session) {
       const { data: profile } = await supabaseClient.from('Profiles_Access').select('role, zone, can_edit_roof, can_edit_road, can_edit_border').eq('id', data.user.id).maybeSingle();
       const roleStr = profile?.role ? profile.role.toLowerCase().replace(' ', '_') : 'user';
-      const userObj = { 
-          name: profile?.zone || email, 
-          role: roleStr, 
-          id: data.user.id,
-          can_edit_roof: profile?.can_edit_roof || false,
-          can_edit_road: profile?.can_edit_road || false,
-          can_edit_border: profile?.can_edit_border || false
-      };
-      setCurrentUser(userObj);
-      setShowLoginModal(false); 
-      fetchAndRenderData(userObj); // 🚀 ហៅទាញទិន្នន័យដោយមានភ្ជាប់ Zone ទៅជាមួយភ្លាមៗ
+      const userObj = { name: profile?.zone || email, role: roleStr, id: data.user.id, can_edit_roof: profile?.can_edit_roof || false, can_edit_road: profile?.can_edit_road || false, can_edit_border: profile?.can_edit_border || false };
+      setCurrentUser(userObj); setShowLoginModal(false); fetchAndRenderData(userObj); 
     }
   };
 
-  // 🚀 SERVER-SIDE FILTERING សម្រាប់ Report (ទាញយកតែ Payment របស់ Zone ខ្លួនឯង)
   const openReport = async () => {
     setActiveView('report');
     let query = supabaseClient.from('payments').select('*');
-    if (currentUserRef.current && currentUserRef.current.role !== 'super_admin') {
-        query = query.eq('zone', currentUserRef.current.name);
-    }
-    const { data } = await query;
-    if (data) setPaymentsData(data);
+    if (currentUserRef.current && currentUserRef.current.role !== 'super_admin') { query = query.eq('zone', currentUserRef.current.name); }
+    const { data } = await query; if (data) setPaymentsData(data);
   };
 
   const handleGlobalMonthChange = async (e: any) => {
-    const val = e.target.value;
-    if (!val || !currentUserRef.current) return;
-    if (!['admin', 'super_admin'].includes(currentUserRef.current.role)) return;
+    const val = e.target.value; if (!val || !currentUserRef.current) return; if (!['admin', 'super_admin'].includes(currentUserRef.current.role)) return;
     if(confirm(`តើអ្នកពិតជាចង់ប្តូរខែត្រូវបង់សម្រាប់ផ្ទះទាំងអស់ក្នុងតំបន់នេះទៅជា « ${val} » មែនទេ?`)) { 
         let query = supabaseClient.from('households').update({ payment_month: val });
-        if (currentUserRef.current.role !== 'super_admin') query = query.eq('zone', currentUserRef.current.name);
-        else if (reportZone) query = query.eq('zone', reportZone);
-        else query = query.not('id', 'is', null); 
+        if (currentUserRef.current.role !== 'super_admin') query = query.eq('zone', currentUserRef.current.name); else if (reportZone) query = query.eq('zone', reportZone); else query = query.not('id', 'is', null); 
         await query; fetchAndRenderData(currentUserRef.current); e.target.value = "";
     }
   };
 
   const handleGlobalStatusChange = async (e: any) => {
-    const val = e.target.value;
-    if (!val || !currentUserRef.current) return;
-    if (!['admin', 'super_admin'].includes(currentUserRef.current.role)) return;
+    const val = e.target.value; if (!val || !currentUserRef.current) return; if (!['admin', 'super_admin'].includes(currentUserRef.current.role)) return;
     if(confirm(`តើអ្នកពិតជាចង់ប្តូរស្ថានភាពសម្រាប់ផ្ទះទាំងអស់ក្នុងតំបន់នេះមែនទេ?`)) { 
         let query = supabaseClient.from('households').update({ status_color: val });
-        if (currentUserRef.current.role !== 'super_admin') query = query.eq('zone', currentUserRef.current.name);
-        else if (reportZone) query = query.eq('zone', reportZone);
-        else query = query.not('id', 'is', null); 
+        if (currentUserRef.current.role !== 'super_admin') query = query.eq('zone', currentUserRef.current.name); else if (reportZone) query = query.eq('zone', reportZone); else query = query.not('id', 'is', null); 
         await query; fetchAndRenderData(currentUserRef.current); e.target.value = "";
     }
   };
@@ -478,20 +453,16 @@ export default function Map() {
   const handleExportCSV = () => {
     let csv = "\uFEFFលេខកូដ,ឈ្មោះ,តម្លៃត្រូវបង់,ខែត្រូវបង់,តំបន់,ស្ថានភាព\n"; 
     reportHouseholds.forEach(h => { csv += `"${h.custom_id}","${h.customer_name||''}","${h.monthly_fee||0}","${h.payment_month||''}","${h.zone||''}","${h.status_color}"\n`; });
-    const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
-    link.download = `Maps_Ark_Report_${new Date().toISOString().split('T')[0]}.csv`; link.click();
+    const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' })); link.download = `Maps_Ark_Report_${new Date().toISOString().split('T')[0]}.csv`; link.click();
   };
 
-  // របាយការណ៍ត្រូវបាន Filter តាំងពីក្នុង Database រួចហើយ តែយើងតម្រងម្តងទៀតសម្រាប់ភាពច្បាស់លាស់
   let reportHouseholds = allData;
   if (currentUser?.role !== 'super_admin') reportHouseholds = reportHouseholds.filter(h => h.zone === currentUser?.name);
   else if (reportZone) reportHouseholds = reportHouseholds.filter(h => h.zone === reportZone);
-  
   const totalHouses = reportHouseholds.length;
   const paidHouses = reportHouseholds.filter(h => h.status_color === 'blue').length;
   const pendingHouses = reportHouseholds.filter(h => h.status_color === 'yellow').length;
   const closedHouses = reportHouseholds.filter(h => h.status_color === 'red').length;
-
   const todayStr = new Date().toISOString().split('T')[0];
   const currentMonthNum = new Date().getMonth() + 1;
   const currentYearNum = new Date().getFullYear();
@@ -499,54 +470,61 @@ export default function Map() {
   let filteredPayments = paymentsData;
   if (currentUser?.role !== 'super_admin') filteredPayments = filteredPayments.filter(p => p.zone === currentUser?.name);
   else if (reportZone) filteredPayments = filteredPayments.filter(p => p.zone === reportZone);
-
   const monthlyRevenue = filteredPayments.filter(p => p.month === currentMonthNum && p.year === currentYearNum).reduce((sum, p) => sum + Number(p.amount || 0), 0);
   const dailyRevenue = filteredPayments.filter(p => p.paid_at && p.paid_at.startsWith(todayStr)).reduce((sum, p) => sum + Number(p.amount || 0), 0);
-
   const uniqueZones = Array.from(new Set(allData.map(h => h.zone).filter(Boolean)));
   const paginatedHouseholds = reportHouseholds.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
   const totalPages = Math.ceil(totalHouses / itemsPerPage);
 
   return (
     <div className="flex flex-col h-screen w-full bg-slate-50 overflow-hidden font-sans relative">
-      <header className="h-[64px] absolute top-0 left-0 right-0 bg-white/95 backdrop-blur-md flex justify-between items-center px-6 z-[2000] shadow-sm">
-        <div className="flex items-center gap-3">
+      {/* 🚀 CSS សម្រាប់ Live Location Dot (លោតភ្លឹបភ្លែត) */}
+      <style dangerouslySetInnerHTML={{__html: `
+        .clear-default-icon { background: none; border: none; }
+        .live-location-dot { width: 14px; height: 14px; background-color: #2563eb; border: 3px solid white; border-radius: 50%; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 2; box-shadow: 0 2px 4px rgba(0,0,0,0.3); }
+        .live-location-pulse { width: 40px; height: 40px; background-color: rgba(37, 99, 235, 0.4); border-radius: 50%; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1; animation: pulse 2s infinite ease-in-out; }
+        @keyframes pulse { 0% { transform: translate(-50%, -50%) scale(0.5); opacity: 1; } 100% { transform: translate(-50%, -50%) scale(1.5); opacity: 0; } }
+      `}} />
+
+      <header className="h-[64px] absolute top-0 left-0 right-0 bg-white/95 backdrop-blur-md flex justify-between items-center px-4 sm:px-6 z-[2000] shadow-sm">
+        <div className="flex items-center gap-2 sm:gap-3">
           <img src="/logo/Map Ark.png" alt="Logo" onError={(e) => e.currentTarget.style.display='none'} className="w-8 h-8 object-contain rounded-md" />
-          <h1 className="text-xl font-bold text-indigo-700">Maps Ark</h1>
+          <h1 className="text-lg sm:text-xl font-bold text-indigo-700 hidden sm:block">Maps Ark</h1>
           {currentUser && (
-            <span className={`text-xs px-2 py-1 rounded-full font-bold border shadow-sm flex items-center gap-1 ${
-              currentUser.role === 'super_admin' ? 'bg-purple-100 text-purple-700 border-purple-200' :
-              currentUser.role === 'admin' ? 'bg-rose-100 text-rose-700 border-rose-200' :
-              'bg-emerald-100 text-emerald-700 border-emerald-200'
-            }`}>
-              {currentUser.role === 'super_admin' ? 'Super Admin 👑' : 
-               currentUser.role === 'admin' ? 'Admin' : 
-               `អ្នកប្រមូល៖ ${currentUser.name}`}
+            <span className={`text-[10px] sm:text-xs px-2 py-1 rounded-full font-bold border shadow-sm flex items-center gap-1 ${currentUser.role === 'super_admin' ? 'bg-purple-100 text-purple-700 border-purple-200' : currentUser.role === 'admin' ? 'bg-rose-100 text-rose-700 border-rose-200' : 'bg-emerald-100 text-emerald-700 border-emerald-200'}`}>
+              {currentUser.role === 'super_admin' ? 'Super Admin 👑' : currentUser.role === 'admin' ? 'Admin' : `ប្រមូល៖ ${currentUser.name}`}
             </span>
           )}
         </div>
-        <div className="flex gap-4 items-center">
+        <div className="flex gap-2 sm:gap-4 items-center">
           {activeView === 'map' ? (
-            <button onClick={openReport} className="flex items-center gap-2 px-5 py-2 text-sm font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl transition-all shadow-sm cursor-pointer"><PieChart size={18} className="text-indigo-600" /> របាយការណ៍</button>
+            <button onClick={openReport} className="flex items-center gap-1 sm:gap-2 px-3 sm:px-5 py-2 text-[11px] sm:text-sm font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl transition-all shadow-sm cursor-pointer"><PieChart size={16} className="text-indigo-600" /> <span className="hidden sm:inline">របាយការណ៍</span></button>
           ) : (
-            <button onClick={() => setActiveView('map')} className="flex items-center gap-2 px-5 py-2 text-sm font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 rounded-xl transition-all shadow-sm cursor-pointer"><MapIcon size={18} /> ត្រឡប់ទៅផែនទី</button>
+            <button onClick={() => setActiveView('map')} className="flex items-center gap-1 sm:gap-2 px-3 sm:px-5 py-2 text-[11px] sm:text-sm font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 rounded-xl transition-all shadow-sm cursor-pointer"><MapIcon size={16} /> <span className="hidden sm:inline">ផែនទី</span></button>
           )}
           {currentUser ? (
-            <button onClick={async () => { await supabaseClient.auth.signOut(); setCurrentUser(null); setShowLoginModal(true); setActiveView('map'); }} className="flex items-center gap-2 px-5 py-2 text-sm font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-xl transition-all shadow-sm border border-rose-200 cursor-pointer"><LogOut size={18} /> ចេញ</button>
+            <button onClick={async () => { await supabaseClient.auth.signOut(); setCurrentUser(null); setDeviceChoice(null); setShowLoginModal(true); setActiveView('map'); }} className="flex items-center gap-1 sm:gap-2 px-3 sm:px-5 py-2 text-[11px] sm:text-sm font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-xl transition-all shadow-sm border border-rose-200 cursor-pointer"><LogOut size={16} /> <span className="hidden sm:inline">ចេញ</span></button>
           ) : (
-            <button onClick={() => setShowLoginModal(true)} className="flex items-center gap-2 px-5 py-2 text-sm font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-xl transition-all shadow-sm border border-indigo-200 cursor-pointer"><LogIn size={18} /> ចូលគណនី</button>
+            <button onClick={() => setShowLoginModal(true)} className="flex items-center gap-1 sm:gap-2 px-3 sm:px-5 py-2 text-[11px] sm:text-sm font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-xl transition-all shadow-sm border border-indigo-200 cursor-pointer"><LogIn size={16} /> <span className="hidden sm:inline">ចូល</span></button>
           )}
         </div>
       </header>
 
       <div className={`flex-1 relative w-full h-full ${activeView === 'map' ? 'flex' : 'hidden'}`}>
+        {/* 🚀 ប៊ូតុងបើក Sidebar */}
         {!isToolsPanelOpen && (
-          <button onClick={() => setIsToolsPanelOpen(true)} className="absolute top-[80px] left-4 z-[1000] bg-white p-3.5 rounded-2xl shadow-xl border border-slate-200 hover:bg-slate-50 transition-all cursor-pointer text-indigo-600 flex items-center justify-center hover:scale-105" title="បើកផ្ទាំងបញ្ជា"><Layers size={22} /></button>
+          <button onClick={() => setIsToolsPanelOpen(true)} className="absolute top-[80px] left-4 z-[1000] bg-white p-3 sm:p-3.5 rounded-2xl shadow-xl border border-slate-200 hover:bg-slate-50 transition-all cursor-pointer text-indigo-600 flex items-center justify-center hover:scale-105" title="បើកផ្ទាំងបញ្ជា"><Layers size={22} /></button>
         )}
 
-        <div className={`absolute top-[80px] left-4 z-[1050] w-[340px] flex flex-col gap-4 transition-all duration-300 transform ${isToolsPanelOpen ? 'translate-x-0 opacity-100 pointer-events-auto' : '-translate-x-[380px] opacity-0 pointer-events-none'} hide-scrollbar overflow-y-auto max-h-[calc(100vh-90px)] pb-6`}>
+        {/* 🚀 ប៊ូតុង Locate Me សម្រាប់តែ Mobile ងាយស្រួលទាញផែនទីមករកខ្លួនឯងវិញ */}
+        {deviceChoice === 'mobile' && !isToolsPanelOpen && (
+          <button onClick={handleLocateMe} className="absolute top-[140px] left-4 z-[1000] bg-blue-600 p-3 sm:p-3.5 rounded-2xl shadow-xl border border-blue-700 hover:bg-blue-700 transition-all cursor-pointer text-white flex items-center justify-center hover:scale-105" title="ទីតាំងរបស់ខ្ញុំ"><Navigation size={22} /></button>
+        )}
+
+        {/* 🚀 ផ្ទាំង Sidebar បង្រួញស្វ័យប្រវត្តិលើ Mobile (w-[calc(100vw-32px)]) */}
+        <div className={`absolute top-[80px] left-4 z-[1050] w-[calc(100vw-32px)] sm:w-[340px] flex flex-col gap-4 transition-all duration-300 transform ${isToolsPanelOpen ? 'translate-x-0 opacity-100 pointer-events-auto' : '-translate-x-[400px] opacity-0 pointer-events-none'} hide-scrollbar overflow-y-auto max-h-[calc(100vh-100px)] pb-6`}>
           <div className="bg-white/90 backdrop-blur-xl border border-white shadow-lg rounded-2xl p-3 flex items-center gap-2">
-            <input type="text" placeholder="ស្វែងរកលេខកូដ (KPC...)" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} className="flex-1 bg-white border border-slate-200 rounded-xl px-4 py-2.5 outline-none text-sm font-bold text-slate-700 focus:border-indigo-500" />
+            <input type="text" placeholder="ស្វែងរកលេខកូដ (KPC...)" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} className="flex-1 w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 outline-none text-sm font-bold text-slate-700 focus:border-indigo-500" />
             <button onClick={handleSearch} className="bg-indigo-600 text-white p-2.5 rounded-xl hover:bg-indigo-700 cursor-pointer shadow-md"><Search size={20} /></button>
             <button onClick={() => setIsToolsPanelOpen(false)} className="bg-rose-50 text-rose-600 p-2.5 rounded-xl hover:bg-rose-100 cursor-pointer border border-rose-200 shadow-sm" title="បិទផ្ទាំង"><X size={20} /></button>
           </div>
@@ -608,97 +586,9 @@ export default function Map() {
         </main>
       </div>
 
-      {activeView === 'report' && (
-        <div className="flex-1 w-full h-full overflow-y-auto bg-slate-50 pt-[100px] p-6 lg:p-10 relative z-10">
-          <div className="max-w-6xl mx-auto space-y-6">
-            <div className="flex flex-col md:flex-row justify-between items-end gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-              <div><h2 className="text-2xl font-bold text-slate-800">របាយការណ៍ទូទៅ</h2><p className="text-sm text-slate-500 mt-1">ទិន្នន័យស្ថិតិ និងការគ្រប់គ្រង</p></div>
-              <div className="flex gap-2 flex-wrap items-center">
-                {currentUser?.role === 'super_admin' && (
-                  <select value={reportZone} onChange={e => setReportZone(e.target.value)} className="px-4 py-2 border rounded-lg text-sm bg-indigo-50 font-bold text-indigo-700 outline-none shadow-sm border-indigo-200 cursor-pointer">
-                    <option value="">🗺️ គ្រប់តំបន់ទាំងអស់</option>
-                    {uniqueZones.map(z => <option key={z} value={z}>{z}</option>)}
-                  </select>
-                )}
-                {['admin', 'super_admin'].includes(currentUser?.role || '') && (
-                  <>
-                    <select onChange={handleGlobalMonthChange} defaultValue="" className="px-4 py-2 border rounded-lg text-sm bg-slate-50 font-bold text-slate-700 outline-none cursor-pointer">
-                      <option value="" disabled>⚙️ ប្តូរខែរួម</option>
-                      {monthsList.map(m => <option key={m} value={m}>{m}</option>)}
-                    </select>
-                    <select onChange={handleGlobalStatusChange} defaultValue="" className="px-4 py-2 border rounded-lg text-sm bg-slate-50 font-bold text-slate-700 outline-none cursor-pointer">
-                      <option value="" disabled>⚙️ ប្តូរស្ថានភាពរួម</option>
-                      <option value="blue">🔵 បានបង់</option>
-                      <option value="yellow">🟡 មិនទាន់បង់</option>
-                      <option value="red">🔴 បិទ</option>
-                      <option value="black">⚫ បង់តែទុកសិន</option>
-                    </select>
-                  </>
-                )}
-                <button onClick={handleExportCSV} className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-4 py-2 rounded-lg text-sm font-bold hover:bg-emerald-100 shadow-sm flex items-center cursor-pointer"><Download size={16} className="mr-1" /> ទាញយក CSV</button>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between"><div className="flex justify-between items-start mb-2"><span className="text-sm font-bold text-slate-500">ផ្ទះសរុប</span><div className="p-2 bg-indigo-50 rounded-lg text-indigo-500"><Home size={20}/></div></div><div className="text-3xl font-black text-slate-800">{totalHouses}</div></div>
-              <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between"><div className="flex justify-between items-start mb-2"><span className="text-sm font-bold text-slate-500">បានបង់</span><div className="p-2 bg-emerald-50 rounded-lg text-emerald-500"><CheckCircle size={20}/></div></div><div className="text-3xl font-black text-emerald-600">{paidHouses}</div></div>
-              <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between"><div className="flex justify-between items-start mb-2"><span className="text-sm font-bold text-slate-500">រង់ចាំបង់</span><div className="p-2 bg-amber-50 rounded-lg text-amber-500"><Clock size={20}/></div></div><div className="text-3xl font-black text-amber-500">{pendingHouses}</div></div>
-              <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between"><div className="flex justify-between items-start mb-2"><span className="text-sm font-bold text-slate-500">បិទ</span><div className="p-2 bg-rose-50 rounded-lg text-rose-500"><XCircle size={20}/></div></div><div className="text-3xl font-black text-rose-600">{closedHouses}</div></div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100"><div className="flex justify-between items-center mb-4"><h3 className="font-bold text-slate-800">ចំណូលប្រចាំខែនេះ</h3><div className="p-2 bg-emerald-50 rounded-lg text-emerald-500"><Wallet size={24}/></div></div><div className="text-4xl font-black text-emerald-600">{monthlyRevenue.toLocaleString()} ៛</div></div>
-              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 border-l-4 border-l-indigo-500"><div className="flex justify-between items-center mb-4"><h3 className="font-bold text-slate-800">ចំណូលប្រចាំថ្ងៃនេះ (Today)</h3><div className="p-2 bg-indigo-50 rounded-lg text-indigo-500"><CalendarDays size={24}/></div></div><div className="text-4xl font-black text-indigo-600">{dailyRevenue.toLocaleString()} ៛</div></div>
-            </div>
-
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-              <div className="px-6 py-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                <h3 className="font-bold text-slate-800 flex items-center"><List size={18} className="mr-2 text-indigo-500"/>បញ្ជីឈ្មោះអតិថិជន</h3>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-slate-500 font-bold">បង្ហាញ៖</span>
-                  <select value={itemsPerPage} onChange={e => {setItemsPerPage(Number(e.target.value)); setCurrentPage(1);}} className="border px-2 py-1 rounded text-sm outline-none font-bold text-indigo-700 bg-white shadow-sm cursor-pointer">
-                    <option value="10">10 ជួរ</option><option value="50">50 ជួរ</option><option value="100">100 ជួរ</option>
-                  </select>
-                </div>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm text-left text-slate-600">
-                  <thead className="bg-slate-100/50 text-slate-500 font-bold border-b">
-                    <tr><th className="px-6 py-4">លេខកូដ</th><th className="px-6 py-4">ឈ្មោះ</th><th className="px-6 py-4">តំបន់</th><th className="px-6 py-4">ខែត្រូវបង់</th><th className="px-6 py-4">ស្ថានភាព</th></tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {paginatedHouseholds.length === 0 && <tr><td colSpan={5} className="text-center py-6 font-bold text-slate-400">គ្មានទិន្នន័យទេ</td></tr>}
-                    {paginatedHouseholds.map(h => (
-                      <tr key={h.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-6 py-4 font-bold text-slate-800">{h.custom_id}</td>
-                        <td className="px-6 py-4 font-bold">{h.customer_name || '---'}</td>
-                        <td className="px-6 py-4">{h.zone || '---'}</td>
-                        <td className="px-6 py-4">{h.payment_month}</td>
-                        <td className="px-6 py-4">
-                          {h.status_color === 'blue' ? <span className="px-3 py-1 bg-emerald-100 text-emerald-700 rounded-lg text-xs font-bold border border-emerald-200">🔵 បានបង់</span> :
-                           h.status_color === 'yellow' ? <span className="px-3 py-1 bg-amber-100 text-amber-700 rounded-lg text-xs font-bold border border-amber-200">🟡 មិនទាន់បង់</span> :
-                           h.status_color === 'red' ? <span className="px-3 py-1 bg-rose-100 text-rose-700 rounded-lg text-xs font-bold border border-rose-200">🔴 បិទ</span> :
-                           <span className="px-3 py-1 bg-slate-200 text-slate-800 rounded-lg text-xs font-bold border border-slate-300">⚫ ទុកសិន</span>}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <div className="px-6 py-4 border-t border-slate-100 flex justify-between items-center bg-slate-50">
-                <span className="text-xs text-slate-500 font-bold">កំពុងបង្ហាញ {(currentPage-1)*itemsPerPage + 1} - {Math.min(currentPage*itemsPerPage, totalHouses)} នៃ {totalHouses}</span>
-                <div className="flex gap-2">
-                  <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="px-3 py-1 bg-white border rounded text-slate-600 hover:bg-slate-100 disabled:opacity-50 text-sm font-bold flex items-center cursor-pointer"><ChevronLeft size={16} className="mr-1"/> ថយក្រោយ</button>
-                  <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage >= totalPages} className="px-3 py-1 bg-white border rounded text-slate-600 hover:bg-slate-100 disabled:opacity-50 text-sm font-bold flex items-center cursor-pointer">ទៅមុខ <ChevronRight size={16} className="ml-1"/></button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
+      {/* 🚀 ផ្ទាំងអតិថិជន (Mobile Responsive) */}
       {selectedHome && activeView === 'map' && (
-        <div className="absolute top-[80px] right-4 z-[9999] w-[380px] bg-white rounded-3xl shadow-2xl flex flex-col overflow-hidden max-h-[calc(100vh-100px)] border border-slate-200">
+        <div className="absolute top-[80px] right-0 sm:right-4 left-0 sm:left-auto mx-auto sm:mx-0 z-[9999] w-[calc(100vw-32px)] sm:w-[380px] bg-white rounded-3xl shadow-2xl flex flex-col overflow-hidden max-h-[calc(100vh-100px)] border border-slate-200">
           <div className="bg-white p-4 border-b border-slate-100 flex justify-between items-center">
             <h3 className="font-black text-indigo-900 text-sm flex items-center gap-2"><User size={18} className="text-indigo-600"/> ព័ត៌មានអតិថិជន</h3>
             <button onClick={() => setSelectedHome(null)} className="text-slate-400 hover:text-rose-500 cursor-pointer"><X size={20} /></button>
@@ -726,22 +616,149 @@ export default function Map() {
         </div>
       )}
 
+      {/* 🚀 Device Selection Modal (លោតឡើងពេល Login រួច តែមិនទាន់រើសឧបករណ៍) */}
+      {currentUser && !deviceChoice && !showLoginModal && (
+        <div className="absolute inset-0 z-[10000] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-8 transform transition-all text-center">
+            <div className="w-20 h-20 mx-auto bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center mb-5"><MapIcon size={40}/></div>
+            <h2 className="text-2xl font-black text-slate-800 mb-2">សូមស្វាគមន៍មកកាន់ Maps Ark</h2>
+            <p className="text-sm text-slate-500 mb-8 font-medium">តើអ្នកកំពុងប្រើប្រាស់ឧបករណ៍អ្វីសម្រាប់ការងារថ្ងៃនេះ?</p>
+            <div className="grid grid-cols-2 gap-4">
+              <button onClick={() => setDeviceChoice('pc')} className="flex flex-col items-center justify-center p-6 border-2 border-slate-200 rounded-2xl hover:border-indigo-500 hover:bg-indigo-50 transition-all cursor-pointer group">
+                <Monitor size={48} className="text-slate-400 group-hover:text-indigo-600 mb-3 transition-colors" />
+                <span className="font-bold text-slate-700 group-hover:text-indigo-700">Option 1: ប្រើ PC</span>
+                <span className="text-[10px] text-slate-400 mt-1">(ផែនទីធម្មតា)</span>
+              </button>
+              <button onClick={() => setDeviceChoice('mobile')} className="flex flex-col items-center justify-center p-6 border-2 border-slate-200 rounded-2xl hover:border-blue-500 hover:bg-blue-50 transition-all cursor-pointer group">
+                <Smartphone size={48} className="text-slate-400 group-hover:text-blue-600 mb-3 transition-colors" />
+                <span className="font-bold text-slate-700 group-hover:text-blue-700">Option 2: ប្រើ Mobile</span>
+                <span className="text-[10px] text-slate-400 mt-1">(បើក Live Location 📍)</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🚀 ផ្ទាំង Login */}
+      {showLoginModal && (
+        <div className="absolute inset-0 z-[9999] flex items-center justify-center bg-indigo-900 px-4">
+          <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl p-6 sm:p-8">
+            <div className="text-center mb-6"><img src="/logo/Map Ark.png" alt="Maps Ark Logo" onError={(e) => e.currentTarget.style.display='none'} className="w-20 h-20 sm:w-24 sm:h-24 mx-auto mb-4 object-contain rounded-full shadow-md border-2 border-indigo-100" /><h1 className="text-xl sm:text-2xl font-bold text-slate-800">ចូលប្រើប្រព័ន្ធ</h1></div>
+            <form onSubmit={handleRealLogin} className="space-y-4">
+              <input type="email" placeholder="Email" required className="w-full px-4 py-3 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-slate-700 text-sm" />
+              <input type="password" placeholder="Password" required className="w-full px-4 py-3 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-slate-700 text-sm" />
+              <button type="submit" className="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl hover:bg-indigo-700 transition-colors shadow-md cursor-pointer text-sm">ចូល</button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ផ្សេងៗ (Report និង History Modals អត់ដូរទេ គ្រាន់តែបង្រួញ Responsive) */}
+      {activeView === 'report' && (
+        <div className="flex-1 w-full h-full overflow-y-auto bg-slate-50 pt-[80px] sm:pt-[100px] p-4 sm:p-6 lg:p-10 relative z-10">
+          <div className="max-w-6xl mx-auto space-y-4 sm:space-y-6">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-100">
+              <div><h2 className="text-xl sm:text-2xl font-bold text-slate-800">របាយការណ៍ទូទៅ</h2><p className="text-xs sm:text-sm text-slate-500 mt-1">ទិន្នន័យស្ថិតិ និងការគ្រប់គ្រង</p></div>
+              <div className="flex gap-2 flex-wrap items-center w-full md:w-auto">
+                {currentUser?.role === 'super_admin' && (
+                  <select value={reportZone} onChange={e => setReportZone(e.target.value)} className="px-3 py-2 border rounded-lg text-xs sm:text-sm bg-indigo-50 font-bold text-indigo-700 outline-none shadow-sm border-indigo-200 cursor-pointer flex-1 md:flex-none">
+                    <option value="">🗺️ គ្រប់តំបន់ទាំងអស់</option>
+                    {uniqueZones.map(z => <option key={z} value={z}>{z}</option>)}
+                  </select>
+                )}
+                {['admin', 'super_admin'].includes(currentUser?.role || '') && (
+                  <>
+                    <select onChange={handleGlobalMonthChange} defaultValue="" className="px-3 py-2 border rounded-lg text-xs sm:text-sm bg-slate-50 font-bold text-slate-700 outline-none cursor-pointer flex-1 md:flex-none">
+                      <option value="" disabled>⚙️ ប្តូរខែរួម</option>
+                      {monthsList.map(m => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                    <select onChange={handleGlobalStatusChange} defaultValue="" className="px-3 py-2 border rounded-lg text-xs sm:text-sm bg-slate-50 font-bold text-slate-700 outline-none cursor-pointer flex-1 md:flex-none">
+                      <option value="" disabled>⚙️ ប្តូរស្ថានភាពរួម</option>
+                      <option value="blue">🔵 បានបង់</option>
+                      <option value="yellow">🟡 មិនទាន់បង់</option>
+                      <option value="red">🔴 បិទ</option>
+                      <option value="black">⚫ បង់តែទុកសិន</option>
+                    </select>
+                  </>
+                )}
+                <button onClick={handleExportCSV} className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-2 rounded-lg text-xs sm:text-sm font-bold hover:bg-emerald-100 shadow-sm flex items-center justify-center cursor-pointer flex-1 md:flex-none w-full md:w-auto"><Download size={16} className="mr-1" /> ទាញយក CSV</button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+              <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between"><div className="flex justify-between items-start mb-2"><span className="text-xs sm:text-sm font-bold text-slate-500">ផ្ទះសរុប</span><div className="p-1.5 sm:p-2 bg-indigo-50 rounded-lg text-indigo-500"><Home size={18} className="sm:w-5 sm:h-5"/></div></div><div className="text-2xl sm:text-3xl font-black text-slate-800">{totalHouses}</div></div>
+              <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between"><div className="flex justify-between items-start mb-2"><span className="text-xs sm:text-sm font-bold text-slate-500">បានបង់</span><div className="p-1.5 sm:p-2 bg-emerald-50 rounded-lg text-emerald-500"><CheckCircle size={18} className="sm:w-5 sm:h-5"/></div></div><div className="text-2xl sm:text-3xl font-black text-emerald-600">{paidHouses}</div></div>
+              <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between"><div className="flex justify-between items-start mb-2"><span className="text-xs sm:text-sm font-bold text-slate-500">រង់ចាំបង់</span><div className="p-1.5 sm:p-2 bg-amber-50 rounded-lg text-amber-500"><Clock size={18} className="sm:w-5 sm:h-5"/></div></div><div className="text-2xl sm:text-3xl font-black text-amber-500">{pendingHouses}</div></div>
+              <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between"><div className="flex justify-between items-start mb-2"><span className="text-xs sm:text-sm font-bold text-slate-500">បិទ</span><div className="p-1.5 sm:p-2 bg-rose-50 rounded-lg text-rose-500"><XCircle size={18} className="sm:w-5 sm:h-5"/></div></div><div className="text-2xl sm:text-3xl font-black text-rose-600">{closedHouses}</div></div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+              <div className="bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-100"><div className="flex justify-between items-center mb-3 sm:mb-4"><h3 className="font-bold text-slate-800 text-sm sm:text-base">ចំណូលប្រចាំខែនេះ</h3><div className="p-1.5 sm:p-2 bg-emerald-50 rounded-lg text-emerald-500"><Wallet size={20} className="sm:w-6 sm:h-6"/></div></div><div className="text-2xl sm:text-4xl font-black text-emerald-600">{monthlyRevenue.toLocaleString()} ៛</div></div>
+              <div className="bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-100 border-l-4 border-l-indigo-500"><div className="flex justify-between items-center mb-3 sm:mb-4"><h3 className="font-bold text-slate-800 text-sm sm:text-base">ចំណូលប្រចាំថ្ងៃនេះ (Today)</h3><div className="p-1.5 sm:p-2 bg-indigo-50 rounded-lg text-indigo-500"><CalendarDays size={20} className="sm:w-6 sm:h-6"/></div></div><div className="text-2xl sm:text-4xl font-black text-indigo-600">{dailyRevenue.toLocaleString()} ៛</div></div>
+            </div>
+
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+              <div className="px-4 sm:px-6 py-4 sm:py-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                <h3 className="font-bold text-slate-800 flex items-center text-sm sm:text-base"><List size={18} className="mr-2 text-indigo-500"/>បញ្ជីឈ្មោះអតិថិជន</h3>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] sm:text-xs text-slate-500 font-bold hidden sm:inline">បង្ហាញ៖</span>
+                  <select value={itemsPerPage} onChange={e => {setItemsPerPage(Number(e.target.value)); setCurrentPage(1);}} className="border px-2 py-1 rounded text-xs sm:text-sm outline-none font-bold text-indigo-700 bg-white shadow-sm cursor-pointer">
+                    <option value="10">10 ជួរ</option><option value="50">50 ជួរ</option><option value="100">100 ជួរ</option>
+                  </select>
+                </div>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs sm:text-sm text-left text-slate-600">
+                  <thead className="bg-slate-100/50 text-slate-500 font-bold border-b">
+                    <tr><th className="px-4 sm:px-6 py-3 sm:py-4">លេខកូដ</th><th className="px-4 sm:px-6 py-3 sm:py-4">ឈ្មោះ</th><th className="px-4 sm:px-6 py-3 sm:py-4">តំបន់</th><th className="px-4 sm:px-6 py-3 sm:py-4">ខែត្រូវបង់</th><th className="px-4 sm:px-6 py-3 sm:py-4">ស្ថានភាព</th></tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {paginatedHouseholds.length === 0 && <tr><td colSpan={5} className="text-center py-6 font-bold text-slate-400">គ្មានទិន្នន័យទេ</td></tr>}
+                    {paginatedHouseholds.map(h => (
+                      <tr key={h.id} className="hover:bg-slate-50 transition-colors whitespace-nowrap">
+                        <td className="px-4 sm:px-6 py-3 sm:py-4 font-bold text-slate-800">{h.custom_id}</td>
+                        <td className="px-4 sm:px-6 py-3 sm:py-4 font-bold">{h.customer_name || '---'}</td>
+                        <td className="px-4 sm:px-6 py-3 sm:py-4">{h.zone || '---'}</td>
+                        <td className="px-4 sm:px-6 py-3 sm:py-4">{h.payment_month}</td>
+                        <td className="px-4 sm:px-6 py-3 sm:py-4">
+                          {h.status_color === 'blue' ? <span className="px-2 sm:px-3 py-1 bg-emerald-100 text-emerald-700 rounded-lg text-[10px] sm:text-xs font-bold border border-emerald-200">🔵 បានបង់</span> :
+                           h.status_color === 'yellow' ? <span className="px-2 sm:px-3 py-1 bg-amber-100 text-amber-700 rounded-lg text-[10px] sm:text-xs font-bold border border-amber-200">🟡 មិនទាន់បង់</span> :
+                           h.status_color === 'red' ? <span className="px-2 sm:px-3 py-1 bg-rose-100 text-rose-700 rounded-lg text-[10px] sm:text-xs font-bold border border-rose-200">🔴 បិទ</span> :
+                           <span className="px-2 sm:px-3 py-1 bg-slate-200 text-slate-800 rounded-lg text-[10px] sm:text-xs font-bold border border-slate-300">⚫ ទុកសិន</span>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="px-4 sm:px-6 py-3 sm:py-4 border-t border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-3 sm:gap-0 bg-slate-50">
+                <span className="text-[10px] sm:text-xs text-slate-500 font-bold">បង្ហាញ {(currentPage-1)*itemsPerPage + 1} - {Math.min(currentPage*itemsPerPage, totalHouses)} នៃ {totalHouses}</span>
+                <div className="flex gap-2">
+                  <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="px-3 py-1.5 bg-white border rounded text-slate-600 hover:bg-slate-100 disabled:opacity-50 text-xs sm:text-sm font-bold flex items-center cursor-pointer"><ChevronLeft size={16} className="mr-1"/> ថយក្រោយ</button>
+                  <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage >= totalPages} className="px-3 py-1.5 bg-white border rounded text-slate-600 hover:bg-slate-100 disabled:opacity-50 text-xs sm:text-sm font-bold flex items-center cursor-pointer">ទៅមុខ <ChevronRight size={16} className="ml-1"/></button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {historyModalOpen && (
         <div className="absolute inset-0 z-[10000] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md h-[80%] max-h-[600px] flex flex-col overflow-hidden">
-            <div className="p-4 border-b border-slate-100 bg-indigo-50 flex justify-between items-center"><h3 className="font-bold text-indigo-800 text-lg flex items-center"><History className="mr-2 text-indigo-600" size={20}/>ប្រវត្តិបង់ប្រាក់</h3><button onClick={() => setHistoryModalOpen(false)} className="text-slate-400 hover:text-rose-500 bg-white rounded-full w-8 h-8 flex items-center justify-center shadow-sm border border-slate-200 cursor-pointer"><X size={18}/></button></div>
+            <div className="p-4 border-b border-slate-100 bg-indigo-50 flex justify-between items-center"><h3 className="font-bold text-indigo-800 text-base sm:text-lg flex items-center"><History className="mr-2 text-indigo-600" size={20}/>ប្រវត្តិបង់ប្រាក់</h3><button onClick={() => setHistoryModalOpen(false)} className="text-slate-400 hover:text-rose-500 bg-white rounded-full w-8 h-8 flex items-center justify-center shadow-sm border border-slate-200 cursor-pointer"><X size={18}/></button></div>
             <div className="p-4 overflow-y-auto flex-1 space-y-3 bg-slate-50">
               {isLoadingHistory ? ( <div className="flex flex-col items-center justify-center h-full text-slate-500 py-10"><Clock className="animate-spin text-indigo-500 mb-3" size={32}/><p className="font-bold">កំពុងទាញយកទិន្នន័យ...</p></div> ) : historyData.length === 0 ? ( <div className="text-center text-slate-500 font-bold py-5 bg-white rounded-xl border border-slate-200 shadow-sm">មិនមានប្រវត្តិបង់ប្រាក់ទេ</div> ) : (
                 <>
-                  <div className="text-center mb-4 text-sm font-bold text-slate-600 bg-white py-2 rounded-lg border border-slate-200 shadow-sm">ប្រវត្តិបង់ប្រាក់ចុងក្រោយ</div>
+                  <div className="text-center mb-4 text-xs sm:text-sm font-bold text-slate-600 bg-white py-2 rounded-lg border border-slate-200 shadow-sm">ប្រវត្តិបង់ប្រាក់ចុងក្រោយ</div>
                   {historyData.map((record) => {
                     const dateObj = new Date(record.paid_at || record.created_at);
                     const formattedDate = `${dateObj.getDate().toString().padStart(2, '0')}/${(dateObj.getMonth()+1).toString().padStart(2, '0')}/${dateObj.getFullYear()} - ${dateObj.getHours().toString().padStart(2, '0')}:${dateObj.getMinutes().toString().padStart(2, '0')}`;
                     const khmerMonthDisplay = monthsList[record.month - 1] || `ខែទី ${record.month}`;
                     return (
-                      <div key={record.id} className="flex justify-between items-center p-4 bg-white border-l-4 border-emerald-500 rounded-xl shadow-sm mb-3">
-                        <div><div className="font-bold text-slate-800 text-base">{khmerMonthDisplay} ឆ្នាំ {record.year}</div><div className="text-xs text-slate-500 font-medium mt-1 flex items-center gap-1"><Clock size={12}/> {formattedDate}</div><div className="text-sm font-bold text-emerald-600 mt-1">៛ {Number(record.amount || 0).toLocaleString()}</div></div>
-                        <div className="flex items-center gap-2"><div className="text-emerald-600 font-bold bg-emerald-50 px-3 py-1.5 rounded-full text-xs border border-emerald-100 flex items-center"><CheckCircle size={14} className="mr-1"/> បានបង់</div><button onClick={() => handleUndoPayment(record.id, khmerMonthDisplay)} className="w-8 h-8 flex items-center justify-center rounded-full bg-rose-50 text-rose-500 hover:bg-rose-500 hover:text-white border border-rose-200 transition-colors shadow-sm cursor-pointer" title="លុបការបង់ប្រាក់ខែនេះ"><RotateCcw size={14} /></button></div>
+                      <div key={record.id} className="flex justify-between items-center p-3 sm:p-4 bg-white border-l-4 border-emerald-500 rounded-xl shadow-sm mb-3">
+                        <div><div className="font-bold text-slate-800 text-sm sm:text-base">{khmerMonthDisplay} ឆ្នាំ {record.year}</div><div className="text-[10px] sm:text-xs text-slate-500 font-medium mt-1 flex items-center gap-1"><Clock size={12}/> {formattedDate}</div><div className="text-xs sm:text-sm font-bold text-emerald-600 mt-1">៛ {Number(record.amount || 0).toLocaleString()}</div></div>
+                        <div className="flex items-center gap-2"><div className="text-emerald-600 font-bold bg-emerald-50 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full text-[10px] sm:text-xs border border-emerald-100 flex items-center"><CheckCircle size={14} className="mr-1"/> បានបង់</div><button onClick={() => handleUndoPayment(record.id, khmerMonthDisplay)} className="w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center rounded-full bg-rose-50 text-rose-500 hover:bg-rose-500 hover:text-white border border-rose-200 transition-colors shadow-sm cursor-pointer" title="លុបការបង់ប្រាក់ខែនេះ"><RotateCcw size={14} /></button></div>
                       </div>
                     );
                   })}
@@ -754,29 +771,17 @@ export default function Map() {
 
       {roadEditData && (
         <div className="absolute inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 transform transition-all">
-                <h3 className="font-bold text-indigo-800 text-lg mb-4 flex items-center"><Road className="mr-2 text-indigo-500" size={20}/>{roadEditData.isNew ? "បន្ថែមផ្លូវថ្មី" : "កែប្រែព័ត៌មានផ្លូវ"}</h3>
-                <label className="block text-xs font-bold text-slate-500 mb-1">ឈ្មោះផ្លូវ (Road Name):</label><input type="text" value={roadEditData.name} onChange={e => setRoadEditData({...roadEditData, name: e.target.value})} className="w-full border border-slate-300 p-2.5 mb-3 rounded-lg outline-none focus:border-indigo-500 font-bold" />
-                <label className="block text-xs font-bold text-slate-500 mb-1">ទំហំផ្លូវ (Width e.g. 5m):</label><input type="text" value={roadEditData.width} onChange={e => setRoadEditData({...roadEditData, width: e.target.value})} className="w-full border border-slate-300 p-2.5 mb-3 rounded-lg outline-none focus:border-indigo-500 font-bold" />
-                <label className="block text-xs font-bold text-slate-500 mb-1">អាសយដ្ឋាន (Address):</label><input type="text" value={roadEditData.address} onChange={e => setRoadEditData({...roadEditData, address: e.target.value})} className="w-full border border-slate-300 p-2.5 mb-3 rounded-lg outline-none focus:border-indigo-500 font-bold" />
-                <label className="block text-xs font-bold text-slate-500 mb-1">ប្រភេទផ្លូវ (Road Type):</label><select value={roadEditData.road_type} onChange={e => setRoadEditData({...roadEditData, road_type: e.target.value})} className="w-full border border-slate-300 p-2.5 mb-5 rounded-lg outline-none focus:border-indigo-500 font-bold bg-slate-50 text-indigo-700"><option value="Land road">Land road (ផ្លូវដី)</option><option value="Concrete road">Concrete road (ផ្លូវបេតុង)</option><option value="Hight Ways road">Hight Ways road (ផ្លូវហាយវេ)</option><option value="Asphalt road">Asphalt road (ផ្លូវកៅស៊ូរ)</option><option value="Nation road">Nation road (ផ្លូវជាតិ)</option></select>
-                <div className="flex gap-2"><button onClick={saveRoadData} className="bg-indigo-600 hover:bg-indigo-700 text-white flex-1 py-3 rounded-lg font-bold shadow-md transition-colors cursor-pointer">រក្សាទុក</button><button onClick={() => setRoadEditData(null)} className="bg-slate-200 hover:bg-slate-300 text-slate-700 flex-1 py-3 rounded-lg font-bold transition-colors cursor-pointer">បោះបង់</button></div>
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5 sm:p-6 transform transition-all">
+                <h3 className="font-bold text-indigo-800 text-base sm:text-lg mb-4 flex items-center"><Road className="mr-2 text-indigo-500" size={20}/>{roadEditData.isNew ? "បន្ថែមផ្លូវថ្មី" : "កែប្រែព័ត៌មានផ្លូវ"}</h3>
+                <label className="block text-[10px] sm:text-xs font-bold text-slate-500 mb-1">ឈ្មោះផ្លូវ (Road Name):</label><input type="text" value={roadEditData.name} onChange={e => setRoadEditData({...roadEditData, name: e.target.value})} className="w-full border border-slate-300 p-2 sm:p-2.5 mb-3 rounded-lg outline-none focus:border-indigo-500 font-bold text-sm" />
+                <label className="block text-[10px] sm:text-xs font-bold text-slate-500 mb-1">ទំហំផ្លូវ (Width e.g. 5m):</label><input type="text" value={roadEditData.width} onChange={e => setRoadEditData({...roadEditData, width: e.target.value})} className="w-full border border-slate-300 p-2 sm:p-2.5 mb-3 rounded-lg outline-none focus:border-indigo-500 font-bold text-sm" />
+                <label className="block text-[10px] sm:text-xs font-bold text-slate-500 mb-1">អាសយដ្ឋាន (Address):</label><input type="text" value={roadEditData.address} onChange={e => setRoadEditData({...roadEditData, address: e.target.value})} className="w-full border border-slate-300 p-2 sm:p-2.5 mb-3 rounded-lg outline-none focus:border-indigo-500 font-bold text-sm" />
+                <label className="block text-[10px] sm:text-xs font-bold text-slate-500 mb-1">ប្រភេទផ្លូវ (Road Type):</label><select value={roadEditData.road_type} onChange={e => setRoadEditData({...roadEditData, road_type: e.target.value})} className="w-full border border-slate-300 p-2 sm:p-2.5 mb-5 rounded-lg outline-none focus:border-indigo-500 font-bold bg-slate-50 text-indigo-700 text-sm"><option value="Land road">Land road (ផ្លូវដី)</option><option value="Concrete road">Concrete road (ផ្លូវបេតុង)</option><option value="Hight Ways road">Hight Ways road (ផ្លូវហាយវេ)</option><option value="Asphalt road">Asphalt road (ផ្លូវកៅស៊ូរ)</option><option value="Nation road">Nation road (ផ្លូវជាតិ)</option></select>
+                <div className="flex gap-2"><button onClick={saveRoadData} className="bg-indigo-600 hover:bg-indigo-700 text-white flex-1 py-2 sm:py-3 rounded-lg font-bold shadow-md transition-colors cursor-pointer text-sm">រក្សាទុក</button><button onClick={() => setRoadEditData(null)} className="bg-slate-200 hover:bg-slate-300 text-slate-700 flex-1 py-2 sm:py-3 rounded-lg font-bold transition-colors cursor-pointer text-sm">បោះបង់</button></div>
             </div>
         </div>
       )}
 
-      {showLoginModal && (
-        <div className="absolute inset-0 z-[9999] flex items-center justify-center bg-indigo-900">
-          <div className="w-full max-w-md bg-white rounded-xl shadow-2xl p-8 m-4">
-            <div className="text-center mb-6"><img src="/logo/Map Ark.png" alt="Maps Ark Logo" onError={(e) => e.currentTarget.style.display='none'} className="w-24 h-24 mx-auto mb-4 object-contain rounded-full shadow-md border-2 border-indigo-100" /><h1 className="text-2xl font-bold text-slate-800">ចូលប្រើប្រព័ន្ធ</h1></div>
-            <form onSubmit={handleRealLogin} className="space-y-4">
-              <input type="email" placeholder="Email" required className="w-full px-4 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-slate-700" />
-              <input type="password" placeholder="Password" required className="w-full px-4 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-slate-700" />
-              <button type="submit" className="w-full bg-indigo-600 text-white font-bold py-2 rounded-lg hover:bg-indigo-700 transition-colors shadow-md cursor-pointer">ចូល</button>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
