@@ -4,7 +4,7 @@ import 'leaflet/dist/leaflet.css';
 import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css';
 import L from 'leaflet';
 import '@geoman-io/leaflet-geoman-free';
-import { MapPin, Eraser, Hexagon, Scissors, RotateCw, Search, Slash, Move, LogIn, LogOut, User, PieChart, Ban, Save, X, Spline, Download, Map as MapIcon, Printer, History, DollarSign, Clock, Camera, Road, Sliders, CheckCircle, RotateCcw, Home, XCircle, Wallet, CalendarDays, ChevronLeft, ChevronRight, List, Layers, Monitor, Smartphone, Navigation } from 'lucide-react';
+import { MapPin, Eraser, Hexagon, Scissors, RotateCw, Search, Slash, Move, LogIn, LogOut, User, PieChart, Ban, Save, X, Spline, Download, Map as MapIcon, Printer, History, DollarSign, Clock, Camera, Road, Sliders, CheckCircle, RotateCcw, Home, XCircle, Wallet, CalendarDays, ChevronLeft, ChevronRight, List, Layers, Monitor, Smartphone, Navigation, Loader2 } from 'lucide-react';
 import { supabaseClient } from '../utils/supabase';
 
 const Toggle = ({ enabled, setEnabled }: { enabled: boolean, setEnabled: (val: boolean) => void }) => (
@@ -21,15 +21,16 @@ export default function Map() {
   const polygonsLayer = useRef<L.FeatureGroup | null>(null);
   const roadsLayer = useRef<L.FeatureGroup | null>(null);
   const bordersLayer = useRef<L.FeatureGroup | null>(null);
-  const locationMarkerRef = useRef<L.Marker | null>(null); // 🚀 សម្រាប់ផ្ទុក Live Location Dot
+  const locationMarkerRef = useRef<L.Marker | null>(null);
 
   const activeDrawTool = useRef<string>('point'); 
 
   const [currentUser, setCurrentUser] = useState<any>(null); 
   const [showLoginModal, setShowLoginModal] = useState(true);
-  
-  // 🚀 State ថ្មីសម្រាប់ជម្រើស PC ឫ Mobile
   const [deviceChoice, setDeviceChoice] = useState<'pc' | 'mobile' | null>(null); 
+
+  const [isMapReady, setIsMapReady] = useState(false);
+  const [isFetchingData, setIsFetchingData] = useState(false); // 🚀 ថ្មី: សម្រាប់បង្ហាញ Loading
 
   const [activeView, setActiveView] = useState<'map' | 'report'>('map');
   const [allData, setAllData] = useState<any[]>([]);
@@ -52,13 +53,13 @@ export default function Map() {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
 
+  // 🚀 Toggles បិទជា Default (OFF) 
   const [pointToggle, setPointToggle] = useState(false);
   const [polygonToggle, setPolygonToggle] = useState(false);
   const [roadToggle, setRoadToggle] = useState(false);
   const [borderLive, setBorderLive] = useState(false);
 
   const currentUserRef = useRef<any>(null);
-  useEffect(() => { currentUserRef.current = currentUser; }, [currentUser]);
 
   const monthsList = ['ខែមករា', 'ខែកកុម្ភៈ', 'ខែមីនា', 'ខែមេសា', 'ខែឧសភា', 'ខែមិថុនា', 'ខែកក្កដា', 'ខែសីហា', 'ខែកញ្ញា', 'ខែតុលា', 'ខែវិច្ឆិកា', 'ខែធ្នូ'];
 
@@ -67,61 +68,49 @@ export default function Map() {
       const { data: { session } } = await supabaseClient.auth.getSession();
       if (session) {
         const { data: profile } = await supabaseClient.from('Profiles_Access').select('role, zone, can_edit_roof, can_edit_road, can_edit_border').eq('id', session.user.id).maybeSingle();
-        const roleStr = profile?.role ? profile.role.toLowerCase().replace(' ', '_') : 'user';
+        const roleStr = profile?.role ? profile.role.toLowerCase().trim().replace(/\s+/g, '_') : 'user';
         const userObj = { 
             id: session.user.id, 
             name: profile?.zone || session.user.email, 
+            zone: profile?.zone || '',
             role: roleStr,
             can_edit_roof: profile?.can_edit_roof || false,
             can_edit_road: profile?.can_edit_road || false,
             can_edit_border: profile?.can_edit_border || false
         };
         setCurrentUser(userObj);
+        currentUserRef.current = userObj;
         setShowLoginModal(false);
-        fetchAndRenderData(userObj); 
       }
     };
     checkSession();
   }, []);
 
-  // 🚀 មុខងារ Live Location (ដើរតែពេលជ្រើសរើស Mobile)
+  useEffect(() => {
+    if (currentUser && isMapReady) {
+      fetchAndRenderData(currentUser);
+    }
+  }, [currentUser, isMapReady]);
+
   useEffect(() => {
     if (deviceChoice === 'mobile' && mapInstance.current) {
         mapInstance.current.locate({ watch: true, enableHighAccuracy: true });
-        
         mapInstance.current.on('locationfound', (e: any) => {
             if (!locationMarkerRef.current) {
-                // បង្កើតចំនុចពណ៌ខៀវមានរង្វង់លោតភ្លឹបភ្លែត
-                const liveIcon = L.divIcon({
-                    className: 'clear-default-icon',
-                    html: `<div class="live-location-pulse"></div><div class="live-location-dot"></div>`,
-                    iconSize: [24, 24],
-                    iconAnchor: [12, 12]
-                });
+                const liveIcon = L.divIcon({ className: 'clear-default-icon', html: `<div class="live-location-pulse"></div><div class="live-location-dot"></div>`, iconSize: [24, 24], iconAnchor: [12, 12] });
                 locationMarkerRef.current = L.marker(e.latlng, { icon: liveIcon }).addTo(mapInstance.current!);
-                mapInstance.current?.flyTo(e.latlng, 17, { animate: true, duration: 1.5 }); // រត់ទៅរកទីតាំងដំបូង
-            } else {
-                locationMarkerRef.current.setLatLng(e.latlng); // អាប់ដេតទីតាំងថ្មីរលូនៗពេលដើរ
-            }
+                mapInstance.current?.flyTo(e.latlng, 17, { animate: true, duration: 1.5 });
+            } else { locationMarkerRef.current.setLatLng(e.latlng); }
         });
-
-        mapInstance.current.on('locationerror', (e: any) => {
-            console.warn("មិនអាចចាប់ទីតាំងបានទេ៖ ", e.message);
-        });
+        mapInstance.current.on('locationerror', (e: any) => { console.warn("មិនអាចចាប់ទីតាំងបានទេ៖ ", e.message); });
     } else if (deviceChoice === 'pc' && mapInstance.current) {
         mapInstance.current.stopLocate();
-        if (locationMarkerRef.current) {
-            mapInstance.current.removeLayer(locationMarkerRef.current);
-            locationMarkerRef.current = null;
-        }
+        if (locationMarkerRef.current) { mapInstance.current.removeLayer(locationMarkerRef.current); locationMarkerRef.current = null; }
     }
   }, [deviceChoice]);
 
-  // 🚀 ប៊ូតុងទាញផែនទីមកទីតាំងខ្ញុំវិញ (Locate Me Button)
   const handleLocateMe = () => {
-      if (deviceChoice === 'mobile' && mapInstance.current) {
-          mapInstance.current.locate({ setView: true, maxZoom: 18, enableHighAccuracy: true });
-      }
+      if (deviceChoice === 'mobile' && mapInstance.current) mapInstance.current.locate({ setView: true, maxZoom: 18, enableHighAccuracy: true });
   };
 
   const addHouseholdToMap = (h: any) => {
@@ -129,11 +118,11 @@ export default function Map() {
     let colorHex = h.status_color === 'blue' ? '#2563eb' : h.status_color === 'red' ? '#dc2626' : h.status_color === 'black' ? '#020617' : '#f59e0b';
 
     if (h.shape_type === 'point' && h.lat && h.lng) {
-      layer = L.circleMarker([h.lat, h.lng], { radius: 8, fillColor: colorHex, color: '#ffffff', weight: 2, fillOpacity: 0.95, pane: 'pointsPane' });
+      layer = L.circleMarker([h.lat, h.lng], { radius: 8, fillColor: colorHex, color: '#ffffff', weight: 2, fillOpacity: 0.95 });
       if (pointsLayer.current) { layer.options.dbId = h.id; layer.options.dbType = 'household'; layer.addTo(pointsLayer.current); }
     } 
     else if (h.shape_type === 'polygon' && h.geojson) {
-      layer = L.geoJSON(h.geojson, { style: { color: '#ffffff', weight: 1.5, fillColor: colorHex, fillOpacity: 0.85 }, pane: 'polygonsPane' });
+      layer = L.geoJSON(h.geojson, { style: { color: '#ffffff', weight: 1.5, fillColor: colorHex, fillOpacity: 0.85 } });
       if (polygonsLayer.current) { layer.eachLayer((l: any) => { l.options.dbId = h.id; l.options.dbType = 'household'; }); layer.addTo(polygonsLayer.current); }
     }
 
@@ -155,7 +144,7 @@ export default function Map() {
       if(r.road_type === 'Concrete road') roadColor = '#f6d91e';
       if(r.road_type === 'Asphalt road') roadColor = '#e01ae3';
 
-      const layer = L.geoJSON(r.geojson, { style: { color: roadColor, weight: 6, opacity: 0.9 }, pane: 'roadsPane' }); 
+      const layer = L.geoJSON(r.geojson, { style: { color: roadColor, weight: 6, opacity: 0.9 } }); 
       layer.bindTooltip(`<div class="text-center"><b>${r.name || 'មិនមានឈ្មោះផ្លូវ'}</b><br><span class="text-xs text-slate-500">${r.road_type || 'Land road'} | ទំហំ: ${r.width || 'មិនបញ្ជាក់'}</span></div>`, {sticky: true, className: 'font-bold'});
       layer.eachLayer((l: any) => { 
         l.options.dbId = r.id; l.options.dbType = 'road'; 
@@ -167,7 +156,7 @@ export default function Map() {
 
   const addBorderToMap = (b: any) => {
     if (b.geojson) {
-      const layer = L.geoJSON(b.geojson, { style: { color: '#ec4899', weight: 5, opacity: 0.8, dashArray: '8, 8', fillOpacity: 0.1 }, pane: 'bordersPane' }); 
+      const layer = L.geoJSON(b.geojson, { style: { color: '#ec4899', weight: 5, opacity: 0.8, dashArray: '8, 8', fillOpacity: 0.1 } }); 
       layer.bindTooltip(`ព្រំដែនតំបន់៖ <b>${b.zone || 'មិនបញ្ជាក់'}</b>`, { sticky: true, className: 'font-bold text-sm bg-white px-2 py-1 shadow-md border border-slate-200 rounded' });
       layer.eachLayer((l: any) => { 
         l.options.dbId = b.id; l.options.dbType = 'border'; 
@@ -184,8 +173,10 @@ export default function Map() {
     }
   };
 
-  const fetchAndRenderData = async (user = currentUserRef.current) => {
-    if (!user) return; 
+  const fetchAndRenderData = async (userToUse: any) => {
+    if (!userToUse || !mapInstance.current) return; 
+
+    setIsFetchingData(true); // 🚀 បើកកូនបារ Loading
 
     if (pointsLayer.current) pointsLayer.current.clearLayers();
     if (polygonsLayer.current) polygonsLayer.current.clearLayers();
@@ -196,9 +187,9 @@ export default function Map() {
     let borderQuery = supabaseClient.from('zone_borders').select('*');
     let roadQuery = supabaseClient.from('roads').select('*'); 
 
-    if (user.role !== 'super_admin') {
-       householdQuery = householdQuery.eq('zone', user.name);
-       borderQuery = borderQuery.eq('zone', user.name);
+    if (userToUse.role !== 'super_admin' && userToUse.zone) {
+       householdQuery = householdQuery.eq('zone', userToUse.zone);
+       borderQuery = borderQuery.eq('zone', userToUse.zone);
     }
 
     const [householdsRes, roadsRes, bordersRes] = await Promise.all([ householdQuery, roadQuery, borderQuery ]);
@@ -206,14 +197,18 @@ export default function Map() {
     if (householdsRes.data) { setAllData(householdsRes.data); householdsRes.data.forEach(addHouseholdToMap); }
     if (roadsRes.data) roadsRes.data.forEach(addRoadToMap); 
     if (bordersRes.data) bordersRes.data.forEach(addBorderToMap);
+
+    setIsFetchingData(false); // 🚀 បិទ Loading ពេលទាញចប់
   };
 
+  // 🚀 Initialize Map 
   useEffect(() => {
     delete (L.Icon.Default.prototype as any)._getIconUrl;
     L.Icon.Default.mergeOptions({ iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png', iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png', shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png' });
 
     if (typeof window !== 'undefined' && mapRef.current && !mapInstance.current) {
-      mapInstance.current = L.map(mapRef.current, { zoomControl: false }).setView([11.99, 105.46], 15);
+      // 🚀 preferCanvas: true ល្បឿនអស្ចារ្យ មិនទាមទារ Panes ច្រើនទេ!
+      mapInstance.current = L.map(mapRef.current, { zoomControl: false, preferCanvas: true }).setView([11.99, 105.46], 15);
       L.control.zoom({ position: 'bottomright' }).addTo(mapInstance.current);
       L.tileLayer('https://{s}.google.com/vt/lyrs=s,h&x={x}&y={y}&z={z}', { maxZoom: 21, subdomains: ['mt0', 'mt1', 'mt2', 'mt3'] }).addTo(mapInstance.current);
 
@@ -225,17 +220,13 @@ export default function Map() {
         }
       }
 
-      if (!mapInstance.current.getPane('bordersPane')) {
-        mapInstance.current.createPane('bordersPane').style.zIndex = '400';
-        mapInstance.current.createPane('roadsPane').style.zIndex = '410';
-        mapInstance.current.createPane('polygonsPane').style.zIndex = '420';
-        mapInstance.current.createPane('pointsPane').style.zIndex = '430'; 
-      }
-
+      // 🚀 បង្កើត Group សម្រាប់ផ្ទុកទិន្នន័យ (អត់ទាន់ Add ចូលផែនទីទេ)
       pointsLayer.current = L.featureGroup();
       polygonsLayer.current = L.featureGroup();
       roadsLayer.current = L.featureGroup();
       bordersLayer.current = L.featureGroup();
+
+      setIsMapReady(true); // ប្រាប់ថារួចរាល់ហើយ
 
       mapInstance.current.on('pm:create', async (e: any) => {
         if (!currentUserRef.current) { alert('🔒 សូមចូលគណនី (Login) ជាមុនសិន។'); mapInstance.current?.removeLayer(e.layer); return; }
@@ -257,34 +248,34 @@ export default function Map() {
             mapInstance.current?.removeLayer(e.layer);
             if (!zoneName) return; 
             const { data } = await supabaseClient.from('zone_borders').insert({ geojson: geojson, zone: zoneName }).select().single();
-            if(data) addBorderToMap(data); 
+            if(data) { addBorderToMap(data); setBorderLive(true); }
         } 
         else {
             let dbShape = shapeType === 'polygon' ? 'polygon' : 'point';
             mapInstance.current?.removeLayer(e.layer);
             const userZone = currentUserRef.current?.role !== 'super_admin' ? currentUserRef.current?.name : '';
             const { data } = await supabaseClient.from('households').insert({ lat: center.lat, lng: center.lng, custom_id: customId, status_color: 'yellow', shape_type: dbShape, geojson: geojson, payment_month: 'ខែមករា', monthly_fee: 10000, zone: userZone }).select().single();
-            if(data) { setAllData(prev => [...prev, data]); addHouseholdToMap(data); }
+            if(data) { 
+                setAllData(prev => [...prev, data]); 
+                addHouseholdToMap(data); 
+                if(dbShape === 'point') setPointToggle(true);
+                if(dbShape === 'polygon') setPolygonToggle(true);
+            }
         }
         (mapInstance.current?.pm as any)?.disableDraw();
       });
 
       mapInstance.current.on('pm:remove', async (e: any) => {
-        if (!currentUserRef.current) { alert('🔒 សូមចូលគណនីជាមុនសិន។'); return; }
-        const id = e.layer.options.dbId;
-        const dbType = e.layer.options.dbType;
-        if (!id) return;
+        if (!currentUserRef.current) return; 
+        const id = e.layer.options.dbId; const dbType = e.layer.options.dbType; if (!id) return;
         if (dbType === 'road') await supabaseClient.from('roads').delete().eq('id', id);
         else if (dbType === 'border') await supabaseClient.from('zone_borders').delete().eq('id', id);
         else await supabaseClient.from('households').delete().eq('id', id);
       });
 
       mapInstance.current.on('pm:update', async (e: any) => {
-        if (!currentUserRef.current) { alert('🔒 សូមចូលគណនីជាមុនសិន។'); return; }
-        const id = e.layer.options.dbId;
-        const dbType = e.layer.options.dbType;
-        if (!id) return;
-        const geojson = e.layer.toGeoJSON();
+        if (!currentUserRef.current) return; 
+        const id = e.layer.options.dbId; const dbType = e.layer.options.dbType; if (!id) return; const geojson = e.layer.toGeoJSON();
         if (dbType === 'road') await supabaseClient.from('roads').update({ geojson: geojson }).eq('id', id);
         else if (dbType === 'border') await supabaseClient.from('zone_borders').update({ geojson: geojson }).eq('id', id);
         else {
@@ -295,31 +286,44 @@ export default function Map() {
     }
   }, []);
 
+  // 🚀 Native Leaflet Toggling: Add/Remove Layer ធានាថាលេចចេញ ១០០%
   useEffect(() => {
     if (mapInstance.current && pointsLayer.current) {
-      if (pointToggle && !mapInstance.current.hasLayer(pointsLayer.current)) mapInstance.current.addLayer(pointsLayer.current);
-      else if (!pointToggle && mapInstance.current.hasLayer(pointsLayer.current)) mapInstance.current.removeLayer(pointsLayer.current);
+      if (pointToggle) {
+        if (!mapInstance.current.hasLayer(pointsLayer.current)) mapInstance.current.addLayer(pointsLayer.current);
+      } else {
+        if (mapInstance.current.hasLayer(pointsLayer.current)) mapInstance.current.removeLayer(pointsLayer.current);
+      }
     }
   }, [pointToggle]);
 
   useEffect(() => {
     if (mapInstance.current && polygonsLayer.current) {
-      if (polygonToggle && !mapInstance.current.hasLayer(polygonsLayer.current)) mapInstance.current.addLayer(polygonsLayer.current);
-      else if (!polygonToggle && mapInstance.current.hasLayer(polygonsLayer.current)) mapInstance.current.removeLayer(polygonsLayer.current);
+      if (polygonToggle) {
+        if (!mapInstance.current.hasLayer(polygonsLayer.current)) mapInstance.current.addLayer(polygonsLayer.current);
+      } else {
+        if (mapInstance.current.hasLayer(polygonsLayer.current)) mapInstance.current.removeLayer(polygonsLayer.current);
+      }
     }
   }, [polygonToggle]);
 
   useEffect(() => {
     if (mapInstance.current && roadsLayer.current) {
-      if (roadToggle && !mapInstance.current.hasLayer(roadsLayer.current)) mapInstance.current.addLayer(roadsLayer.current);
-      else if (!roadToggle && mapInstance.current.hasLayer(roadsLayer.current)) mapInstance.current.removeLayer(roadsLayer.current);
+      if (roadToggle) {
+        if (!mapInstance.current.hasLayer(roadsLayer.current)) mapInstance.current.addLayer(roadsLayer.current);
+      } else {
+        if (mapInstance.current.hasLayer(roadsLayer.current)) mapInstance.current.removeLayer(roadsLayer.current);
+      }
     }
   }, [roadToggle]);
 
   useEffect(() => {
     if (mapInstance.current && bordersLayer.current) {
-      if (borderLive && !mapInstance.current.hasLayer(bordersLayer.current)) mapInstance.current.addLayer(bordersLayer.current);
-      else if (!borderLive && mapInstance.current.hasLayer(bordersLayer.current)) mapInstance.current.removeLayer(bordersLayer.current);
+      if (borderLive) {
+        if (!mapInstance.current.hasLayer(bordersLayer.current)) mapInstance.current.addLayer(bordersLayer.current);
+      } else {
+        if (mapInstance.current.hasLayer(bordersLayer.current)) mapInstance.current.removeLayer(bordersLayer.current);
+      }
     }
   }, [borderLive]);
 
@@ -394,7 +398,7 @@ export default function Map() {
   const saveRoadData = async () => {
       if (roadEditData.isNew) {
           const { data } = await supabaseClient.from('roads').insert({ geojson: roadEditData.geojson, name: roadEditData.name, width: roadEditData.width, address: roadEditData.address, road_type: roadEditData.road_type }).select().single();
-          if (data) addRoadToMap(data); setRoadToggle(true);
+          if (data) { addRoadToMap(data); setRoadToggle(true); }
       } else {
           const { data } = await supabaseClient.from('roads').update({ name: roadEditData.name, width: roadEditData.width, address: roadEditData.address, road_type: roadEditData.road_type }).eq('id', roadEditData.id).select().single();
           if (data) { roadsLayer.current?.eachLayer((l: any) => { if(l.options.dbId === roadEditData.id) roadsLayer.current?.removeLayer(l); }); addRoadToMap(data); }
@@ -419,9 +423,9 @@ export default function Map() {
     if (error) { alert('❌ មិនអាចចូលបានទេ៖ ' + error.message); } 
     else if (data.session) {
       const { data: profile } = await supabaseClient.from('Profiles_Access').select('role, zone, can_edit_roof, can_edit_road, can_edit_border').eq('id', data.user.id).maybeSingle();
-      const roleStr = profile?.role ? profile.role.toLowerCase().replace(' ', '_') : 'user';
-      const userObj = { name: profile?.zone || email, role: roleStr, id: data.user.id, can_edit_roof: profile?.can_edit_roof || false, can_edit_road: profile?.can_edit_road || false, can_edit_border: profile?.can_edit_border || false };
-      setCurrentUser(userObj); setShowLoginModal(false); fetchAndRenderData(userObj); 
+      const roleStr = profile?.role ? profile.role.toLowerCase().trim().replace(/\s+/g, '_') : 'user';
+      const userObj = { name: profile?.zone || email, zone: profile?.zone || '', role: roleStr, id: data.user.id, can_edit_roof: profile?.can_edit_roof || false, can_edit_road: profile?.can_edit_road || false, can_edit_border: profile?.can_edit_border || false };
+      setCurrentUser(userObj); setShowLoginModal(false); 
     }
   };
 
@@ -478,13 +482,20 @@ export default function Map() {
 
   return (
     <div className="flex flex-col h-screen w-full bg-slate-50 overflow-hidden font-sans relative">
-      {/* 🚀 CSS សម្រាប់ Live Location Dot (លោតភ្លឹបភ្លែត) */}
       <style dangerouslySetInnerHTML={{__html: `
         .clear-default-icon { background: none; border: none; }
         .live-location-dot { width: 14px; height: 14px; background-color: #2563eb; border: 3px solid white; border-radius: 50%; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 2; box-shadow: 0 2px 4px rgba(0,0,0,0.3); }
         .live-location-pulse { width: 40px; height: 40px; background-color: rgba(37, 99, 235, 0.4); border-radius: 50%; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1; animation: pulse 2s infinite ease-in-out; }
         @keyframes pulse { 0% { transform: translate(-50%, -50%) scale(0.5); opacity: 1; } 100% { transform: translate(-50%, -50%) scale(1.5); opacity: 0; } }
       `}} />
+
+      {/* 🚀 បារបង្ហាញពេលកំពុងទាញយកទិន្នន័យ (Loading Indicator) */}
+      {isFetchingData && (
+        <div className="absolute top-20 left-1/2 transform -translate-x-1/2 z-[3000] bg-indigo-600 text-white px-5 py-2.5 rounded-full shadow-2xl flex items-center gap-3 animate-pulse border border-indigo-400">
+          <Loader2 className="animate-spin" size={18} />
+          <span className="font-bold text-sm tracking-wide">កំពុងទាញយកទិន្នន័យ...</span>
+        </div>
+      )}
 
       <header className="h-[64px] absolute top-0 left-0 right-0 bg-white/95 backdrop-blur-md flex justify-between items-center px-4 sm:px-6 z-[2000] shadow-sm">
         <div className="flex items-center gap-2 sm:gap-3">
@@ -511,17 +522,14 @@ export default function Map() {
       </header>
 
       <div className={`flex-1 relative w-full h-full ${activeView === 'map' ? 'flex' : 'hidden'}`}>
-        {/* 🚀 ប៊ូតុងបើក Sidebar */}
         {!isToolsPanelOpen && (
           <button onClick={() => setIsToolsPanelOpen(true)} className="absolute top-[80px] left-4 z-[1000] bg-white p-3 sm:p-3.5 rounded-2xl shadow-xl border border-slate-200 hover:bg-slate-50 transition-all cursor-pointer text-indigo-600 flex items-center justify-center hover:scale-105" title="បើកផ្ទាំងបញ្ជា"><Layers size={22} /></button>
         )}
 
-        {/* 🚀 ប៊ូតុង Locate Me សម្រាប់តែ Mobile ងាយស្រួលទាញផែនទីមករកខ្លួនឯងវិញ */}
         {deviceChoice === 'mobile' && !isToolsPanelOpen && (
           <button onClick={handleLocateMe} className="absolute top-[140px] left-4 z-[1000] bg-blue-600 p-3 sm:p-3.5 rounded-2xl shadow-xl border border-blue-700 hover:bg-blue-700 transition-all cursor-pointer text-white flex items-center justify-center hover:scale-105" title="ទីតាំងរបស់ខ្ញុំ"><Navigation size={22} /></button>
         )}
 
-        {/* 🚀 ផ្ទាំង Sidebar បង្រួញស្វ័យប្រវត្តិលើ Mobile (w-[calc(100vw-32px)]) */}
         <div className={`absolute top-[80px] left-4 z-[1050] w-[calc(100vw-32px)] sm:w-[340px] flex flex-col gap-4 transition-all duration-300 transform ${isToolsPanelOpen ? 'translate-x-0 opacity-100 pointer-events-auto' : '-translate-x-[400px] opacity-0 pointer-events-none'} hide-scrollbar overflow-y-auto max-h-[calc(100vh-100px)] pb-6`}>
           <div className="bg-white/90 backdrop-blur-xl border border-white shadow-lg rounded-2xl p-3 flex items-center gap-2">
             <input type="text" placeholder="ស្វែងរកលេខកូដ (KPC...)" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} className="flex-1 w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 outline-none text-sm font-bold text-slate-700 focus:border-indigo-500" />
@@ -586,7 +594,6 @@ export default function Map() {
         </main>
       </div>
 
-      {/* 🚀 ផ្ទាំងអតិថិជន (Mobile Responsive) */}
       {selectedHome && activeView === 'map' && (
         <div className="absolute top-[80px] right-0 sm:right-4 left-0 sm:left-auto mx-auto sm:mx-0 z-[9999] w-[calc(100vw-32px)] sm:w-[380px] bg-white rounded-3xl shadow-2xl flex flex-col overflow-hidden max-h-[calc(100vh-100px)] border border-slate-200">
           <div className="bg-white p-4 border-b border-slate-100 flex justify-between items-center">
@@ -616,7 +623,6 @@ export default function Map() {
         </div>
       )}
 
-      {/* 🚀 Device Selection Modal (លោតឡើងពេល Login រួច តែមិនទាន់រើសឧបករណ៍) */}
       {currentUser && !deviceChoice && !showLoginModal && (
         <div className="absolute inset-0 z-[10000] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-8 transform transition-all text-center">
@@ -639,7 +645,6 @@ export default function Map() {
         </div>
       )}
 
-      {/* 🚀 ផ្ទាំង Login */}
       {showLoginModal && (
         <div className="absolute inset-0 z-[9999] flex items-center justify-center bg-indigo-900 px-4">
           <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl p-6 sm:p-8">
@@ -653,7 +658,6 @@ export default function Map() {
         </div>
       )}
 
-      {/* ផ្សេងៗ (Report និង History Modals អត់ដូរទេ គ្រាន់តែបង្រួញ Responsive) */}
       {activeView === 'report' && (
         <div className="flex-1 w-full h-full overflow-y-auto bg-slate-50 pt-[80px] sm:pt-[100px] p-4 sm:p-6 lg:p-10 relative z-10">
           <div className="max-w-6xl mx-auto space-y-4 sm:space-y-6">
