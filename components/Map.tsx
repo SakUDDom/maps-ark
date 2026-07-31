@@ -66,18 +66,19 @@ export default function Map() {
     const checkSession = async () => {
       const { data: { session } } = await supabaseClient.auth.getSession();
       if (session) {
-        // 🚀 ទាញយកសិទ្ធិបន្ថែម can_edit_roof, can_edit_road, can_edit_border ពី Database
         const { data: profile } = await supabaseClient.from('Profiles_Access').select('role, zone, can_edit_roof, can_edit_road, can_edit_border').eq('id', session.user.id).maybeSingle();
         const roleStr = profile?.role ? profile.role.toLowerCase().replace(' ', '_') : 'user';
-        setCurrentUser({ 
+        const userObj = { 
             id: session.user.id, 
             name: profile?.zone || session.user.email, 
             role: roleStr,
             can_edit_roof: profile?.can_edit_roof || false,
             can_edit_road: profile?.can_edit_road || false,
             can_edit_border: profile?.can_edit_border || false
-        });
+        };
+        setCurrentUser(userObj);
         setShowLoginModal(false);
+        fetchAndRenderData(userObj); 
       }
     };
     checkSession();
@@ -140,7 +141,7 @@ export default function Map() {
           const newZoneName = prompt("កែប្រែឈ្មោះតំបន់ (Zone) សម្រាប់ព្រំដែននេះ៖", b.zone);
           if (newZoneName && newZoneName.trim() !== "" && newZoneName !== b.zone) {
               await supabaseClient.from('zone_borders').update({ zone: newZoneName.trim() }).eq('id', b.id);
-              fetchAndRenderData(); 
+              fetchAndRenderData(currentUserRef.current); 
           }
         });
       });
@@ -148,23 +149,39 @@ export default function Map() {
     }
   };
 
-  const fetchAndRenderData = async () => {
+  // 🚀 SERVER-SIDE FILTERING (ទាញយកតែទិន្នន័យចាំបាច់ សន្សំ Quota និងលឿន)
+  const fetchAndRenderData = async (user = currentUserRef.current) => {
+    if (!user) return; // បើអត់ទាន់ Login កុំឱ្យវាទាញឱ្យសោះ
+
     if (pointsLayer.current) pointsLayer.current.clearLayers();
     if (polygonsLayer.current) polygonsLayer.current.clearLayers();
     if (roadsLayer.current) roadsLayer.current.clearLayers();
     if (bordersLayer.current) bordersLayer.current.clearLayers();
 
+    // បង្កើត Query សម្រាប់ទាញទិន្នន័យ
+    let householdQuery = supabaseClient.from('households').select('*');
+    let borderQuery = supabaseClient.from('zone_borders').select('*');
+    let roadQuery = supabaseClient.from('roads').select('*'); // ផ្លូវជាទូទៅមនុស្សភាគច្រើនឱ្យឃើញទាំងអស់ តែបងអាចកំណត់បាន
+
+    // 🚀 បើមិនមែនជា Super Admin ត្រូវ Filter ចេញពី Database ផ្ទាល់តែម្តង
+    if (user.role !== 'super_admin') {
+       householdQuery = householdQuery.eq('zone', user.name);
+       borderQuery = borderQuery.eq('zone', user.name);
+    }
+
+    // ទាញយកក្នុងពេលតែមួយដោយប្រើ Promise.all
     const [householdsRes, roadsRes, bordersRes] = await Promise.all([
-      supabaseClient.from('households').select('*'),
-      supabaseClient.from('roads').select('*'),
-      supabaseClient.from('zone_borders').select('*')
+      householdQuery,
+      roadQuery,
+      borderQuery
     ]);
 
     if (householdsRes.data) {
       setAllData(householdsRes.data);
       householdsRes.data.forEach(addHouseholdToMap);
     }
-    if (roadsRes.data) roadsRes.data.forEach(addRoadToMap);
+    
+    if (roadsRes.data) roadsRes.data.forEach(addRoadToMap); 
     if (bordersRes.data) bordersRes.data.forEach(addBorderToMap);
   };
 
@@ -197,8 +214,6 @@ export default function Map() {
       roadsLayer.current = L.featureGroup();
       bordersLayer.current = L.featureGroup();
 
-      fetchAndRenderData();
-
       mapInstance.current.on('pm:create', async (e: any) => {
         if (!currentUserRef.current) { alert('🔒 សូមចូលគណនី (Login) ជាមុនសិន។'); mapInstance.current?.removeLayer(e.layer); return; }
 
@@ -224,7 +239,10 @@ export default function Map() {
         else {
             let dbShape = shapeType === 'polygon' ? 'polygon' : 'point';
             mapInstance.current?.removeLayer(e.layer);
-            const { data } = await supabaseClient.from('households').insert({ lat: center.lat, lng: center.lng, custom_id: customId, status_color: 'yellow', shape_type: dbShape, geojson: geojson, payment_month: 'ខែមករា', monthly_fee: 10000 }).select().single();
+
+            const userZone = currentUserRef.current?.role !== 'super_admin' ? currentUserRef.current?.name : '';
+
+            const { data } = await supabaseClient.from('households').insert({ lat: center.lat, lng: center.lng, custom_id: customId, status_color: 'yellow', shape_type: dbShape, geojson: geojson, payment_month: 'ខែមករា', monthly_fee: 10000, zone: userZone }).select().single();
             
             if(data) {
                 setAllData(prev => [...prev, data]); 
@@ -404,24 +422,30 @@ export default function Map() {
     const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
     if (error) { alert('❌ មិនអាចចូលបានទេ៖ ' + error.message); } 
     else if (data.session) {
-      // 🚀 ទាញយកសិទ្ធិបន្ថែម can_edit_roof, can_edit_road, can_edit_border ពី Database
       const { data: profile } = await supabaseClient.from('Profiles_Access').select('role, zone, can_edit_roof, can_edit_road, can_edit_border').eq('id', data.user.id).maybeSingle();
       const roleStr = profile?.role ? profile.role.toLowerCase().replace(' ', '_') : 'user';
-      setCurrentUser({ 
+      const userObj = { 
           name: profile?.zone || email, 
           role: roleStr, 
           id: data.user.id,
           can_edit_roof: profile?.can_edit_roof || false,
           can_edit_road: profile?.can_edit_road || false,
           can_edit_border: profile?.can_edit_border || false
-      });
-      setShowLoginModal(false); fetchAndRenderData();
+      };
+      setCurrentUser(userObj);
+      setShowLoginModal(false); 
+      fetchAndRenderData(userObj); // 🚀 ហៅទាញទិន្នន័យដោយមានភ្ជាប់ Zone ទៅជាមួយភ្លាមៗ
     }
   };
 
+  // 🚀 SERVER-SIDE FILTERING សម្រាប់ Report (ទាញយកតែ Payment របស់ Zone ខ្លួនឯង)
   const openReport = async () => {
     setActiveView('report');
-    const { data } = await supabaseClient.from('payments').select('*');
+    let query = supabaseClient.from('payments').select('*');
+    if (currentUserRef.current && currentUserRef.current.role !== 'super_admin') {
+        query = query.eq('zone', currentUserRef.current.name);
+    }
+    const { data } = await query;
     if (data) setPaymentsData(data);
   };
 
@@ -434,7 +458,7 @@ export default function Map() {
         if (currentUserRef.current.role !== 'super_admin') query = query.eq('zone', currentUserRef.current.name);
         else if (reportZone) query = query.eq('zone', reportZone);
         else query = query.not('id', 'is', null); 
-        await query; fetchAndRenderData(); e.target.value = "";
+        await query; fetchAndRenderData(currentUserRef.current); e.target.value = "";
     }
   };
 
@@ -447,7 +471,7 @@ export default function Map() {
         if (currentUserRef.current.role !== 'super_admin') query = query.eq('zone', currentUserRef.current.name);
         else if (reportZone) query = query.eq('zone', reportZone);
         else query = query.not('id', 'is', null); 
-        await query; fetchAndRenderData(); e.target.value = "";
+        await query; fetchAndRenderData(currentUserRef.current); e.target.value = "";
     }
   };
 
@@ -458,6 +482,7 @@ export default function Map() {
     link.download = `Maps_Ark_Report_${new Date().toISOString().split('T')[0]}.csv`; link.click();
   };
 
+  // របាយការណ៍ត្រូវបាន Filter តាំងពីក្នុង Database រួចហើយ តែយើងតម្រងម្តងទៀតសម្រាប់ភាពច្បាស់លាស់
   let reportHouseholds = allData;
   if (currentUser?.role !== 'super_admin') reportHouseholds = reportHouseholds.filter(h => h.zone === currentUser?.name);
   else if (reportZone) reportHouseholds = reportHouseholds.filter(h => h.zone === reportZone);
@@ -535,7 +560,6 @@ export default function Map() {
             <div className="flex justify-center"><Toggle enabled={pointToggle} setEnabled={setPointToggle} /></div>
           </div>
 
-          {/* 🚀 លាក់ផ្ទាំង Polygon បើគណនីនោះគ្មានសិទ្ធិ ឬដាក់ FALSE ក្នុង Database */}
           {(!currentUser || currentUser?.role === 'super_admin' || currentUser?.can_edit_roof) && (
             <div className="bg-white/90 backdrop-blur-xl border border-white shadow-lg rounded-3xl p-5">
               <h3 className="text-center font-black text-slate-700 text-sm border-b-2 border-indigo-500/20 pb-3 mb-4">🛑 ដំបូល (Polygon)</h3>
@@ -550,7 +574,6 @@ export default function Map() {
             </div>
           )}
 
-          {/* 🚀 លាក់ផ្ទាំង Road បើគណនីនោះគ្មានសិទ្ធិ ឬដាក់ FALSE ក្នុង Database */}
           {(!currentUser || currentUser?.role === 'super_admin' || currentUser?.can_edit_road) && (
             <div className="bg-white/90 backdrop-blur-xl border border-white shadow-lg rounded-3xl p-5">
               <h3 className="text-center font-black text-slate-700 text-sm border-b-2 border-indigo-500/20 pb-3 mb-4">🛣️ ផ្លូវ (Road)</h3>
@@ -563,7 +586,6 @@ export default function Map() {
             </div>
           )}
 
-          {/* 🚀 លាក់ផ្ទាំង Border បើគណនីនោះគ្មានសិទ្ធិ ឬដាក់ FALSE ក្នុង Database */}
           {(!currentUser || currentUser?.role === 'super_admin' || currentUser?.can_edit_border) && (
             <div className="bg-white/90 backdrop-blur-xl border border-white shadow-lg rounded-3xl p-5">
               <h3 className="text-center font-black text-slate-700 text-sm border-b-2 border-indigo-500/20 pb-3 mb-4">🌐 ព្រំដែន (Border)</h3>
