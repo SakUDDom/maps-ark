@@ -59,6 +59,9 @@ export default function Map() {
   const [borderLive, setBorderLive] = useState(false);
 
   const currentUserRef = useRef<any>(null);
+  
+  // 🚀 បន្ថែម Memory Ref សម្រាប់ទាញយកទិន្នន័យ Update ថ្មីៗដោយមិនបាច់ Refresh
+  const allDataRef = useRef<any[]>([]);
 
   const monthsList = ['ខែមករា', 'ខែកកុម្ភៈ', 'ខែមីនា', 'ខែមេសា', 'ខែឧសភា', 'ខែមិថុនា', 'ខែកក្កដា', 'ខែសីហា', 'ខែកញ្ញា', 'ខែតុលា', 'ខែវិច្ឆិកា', 'ខែធ្នូ'];
 
@@ -90,6 +93,11 @@ export default function Map() {
       fetchAndRenderData(currentUser);
     }
   }, [currentUser, isMapReady]);
+
+  // 🚀 Update អង្គចងចាំ (Ref) គ្រប់ពេលដែល allData ដូរ (ពេល Save/Pay)
+  useEffect(() => {
+    allDataRef.current = allData;
+  }, [allData]);
 
   useEffect(() => {
     if (deviceChoice === 'mobile' && mapInstance.current) {
@@ -127,9 +135,22 @@ export default function Map() {
 
     if (layer) {
       layer.on('click', () => {
-        setSelectedHome(h); 
-        setEditForm({ custom_id: h.custom_id || '', customer_name: h.customer_name || '', monthly_fee: h.monthly_fee || 0, zone: h.zone || '', status_color: h.status_color || 'yellow', payment_month: h.payment_month || 'ខែមករា', photo_url: h.photo_url || '' }); 
-        setPayMonth(h.payment_month || 'ខែមករា'); setPayNumMonths(1); setIsManualEditOpen(false); 
+        // 🚀 ទាញយកទិន្នន័យថ្មីចែសពី Memory (Ref) ជំនួសឱ្យការប្រើទិន្នន័យចាស់
+        const freshData = allDataRef.current.find((item: any) => item.id === h.id) || h;
+        
+        setSelectedHome(freshData); 
+        setEditForm({ 
+            custom_id: freshData.custom_id || '', 
+            customer_name: freshData.customer_name || '', 
+            monthly_fee: freshData.monthly_fee || 0, 
+            zone: freshData.zone || '', 
+            status_color: freshData.status_color || 'yellow', 
+            payment_month: freshData.payment_month || 'ខែមករា', 
+            photo_url: freshData.photo_url || '' 
+        }); 
+        setPayMonth(freshData.payment_month || 'ខែមករា'); 
+        setPayNumMonths(1); 
+        setIsManualEditOpen(false); 
       });
     }
   };
@@ -346,7 +367,14 @@ export default function Map() {
     const { error } = await supabaseClient.from('households').update({ custom_id: editForm.custom_id, customer_name: editForm.customer_name, monthly_fee: finalFee, zone: editForm.zone, status_color: editForm.status_color, payment_month: editForm.payment_month }).eq('id', selectedHome.id);
     if (!error) { 
       let colorHex = editForm.status_color === 'blue' ? '#2563eb' : editForm.status_color === 'red' ? '#dc2626' : editForm.status_color === 'black' ? '#020617' : '#f59e0b';
-      updateMarkerColorLocally(selectedHome.id, colorHex); setSelectedHome({ ...selectedHome, ...editForm, monthly_fee: finalFee }); setEditForm({...editForm, monthly_fee: finalFee}); alert('✅ រក្សាទុកព័ត៌មានអតិថិជនបានជោគជ័យ!'); 
+      updateMarkerColorLocally(selectedHome.id, colorHex); 
+      
+      // 🚀 Update Memory (allData) ភ្លាមៗដោយមិនបាច់ Refresh!
+      const updatedHome = { ...selectedHome, ...editForm, monthly_fee: finalFee };
+      setAllData(prev => prev.map(item => item.id === selectedHome.id ? updatedHome : item));
+      
+      alert('✅ រក្សាទុកព័ត៌មានអតិថិជនបានជោគជ័យ!'); 
+      setSelectedHome(null); // បិទផ្ទាំងអូតូ
     } else { alert(`❌ មានបញ្ហាក្នុងការរក្សាទុក! Error: ${error.message}`); }
   };
 
@@ -374,7 +402,12 @@ export default function Map() {
 
     if (!error) {
       alert('✅ ការបង់ប្រាក់ទទួលបានជោគជ័យ!'); updateMarkerColorLocally(selectedHome.id, '#2563eb'); 
-      setEditForm({...editForm, status_color: 'blue', payment_month: nextMonthStr}); setSelectedHome({...selectedHome, status_color: 'blue', payment_month: nextMonthStr});
+      
+      // 🚀 Update Memory (allData) ភ្លាមៗដោយមិនបាច់ Refresh!
+      const updatedHome = { ...selectedHome, status_color: 'blue', payment_month: nextMonthStr };
+      setAllData(prev => prev.map(item => item.id === selectedHome.id ? updatedHome : item));
+      
+      setSelectedHome(null); // បិទផ្ទាំងអូតូ
     } else { alert(`❌ បរាជ័យក្នុងការ Update ស្ថានភាពផ្ទះ! Error: ${error.message}`); }
   };
 
@@ -390,7 +423,14 @@ export default function Map() {
     if (!confirm(`តើអ្នកពិតជាចង់បោះបង់ការបង់ប្រាក់ខែ ${monthStr} នេះមែនទេ?`)) return;
     await supabaseClient.from('payments').delete().eq('id', paymentId);
     await supabaseClient.from('households').update({ status_color: 'yellow', payment_month: monthStr }).eq('id', selectedHome.id);
-    updateMarkerColorLocally(selectedHome.id, '#f59e0b'); setEditForm({...editForm, status_color: 'yellow', payment_month: monthStr}); setSelectedHome({...selectedHome, status_color: 'yellow', payment_month: monthStr});
+    updateMarkerColorLocally(selectedHome.id, '#f59e0b'); 
+    
+    // 🚀 Update Memory (allData) ភ្លាមៗ
+    const updatedHome = { ...selectedHome, status_color: 'yellow', payment_month: monthStr };
+    setAllData(prev => prev.map(item => item.id === selectedHome.id ? updatedHome : item));
+    
+    setEditForm({...editForm, status_color: 'yellow', payment_month: monthStr}); 
+    setSelectedHome(updatedHome);
     handleOpenHistory(); 
   };
 
@@ -411,7 +451,10 @@ export default function Map() {
     if (data && data.length > 0) {
       const h = data[0];
       if (mapInstance.current && h.lat && h.lng) mapInstance.current.flyTo([h.lat, h.lng], 18, { animate: true, duration: 1.5 });
-      setSelectedHome(h); setEditForm({ custom_id: h.custom_id || '', customer_name: h.customer_name || '', monthly_fee: h.monthly_fee || 0, zone: h.zone || '', status_color: h.status_color || 'yellow', payment_month: h.payment_month || 'ខែមករា', photo_url: h.photo_url || '' }); 
+      
+      const freshData = allDataRef.current.find((item: any) => item.id === h.id) || h;
+      setSelectedHome(freshData); 
+      setEditForm({ custom_id: freshData.custom_id || '', customer_name: freshData.customer_name || '', monthly_fee: freshData.monthly_fee || 0, zone: freshData.zone || '', status_color: freshData.status_color || 'yellow', payment_month: freshData.payment_month || 'ខែមករា', photo_url: freshData.photo_url || '' }); 
     } else alert('រកមិនឃើញលេខកូដនេះទេ!');
   };
 
@@ -440,7 +483,16 @@ export default function Map() {
     if(confirm(`តើអ្នកពិតជាចង់ប្តូរខែត្រូវបង់សម្រាប់ផ្ទះទាំងអស់ក្នុងតំបន់នេះទៅជា « ${val} » មែនទេ?`)) { 
         let query = supabaseClient.from('households').update({ payment_month: val });
         if (currentUserRef.current.role !== 'super_admin') query = query.eq('zone', currentUserRef.current.name); else if (reportZone) query = query.eq('zone', reportZone); else query = query.not('id', 'is', null); 
-        await query; fetchAndRenderData(currentUserRef.current); e.target.value = "";
+        await query; 
+        
+        // 🚀 Update Memory អូតូ មិនបាច់ Fetch ថ្មី
+        setAllData(prev => prev.map(item => {
+            if (currentUserRef.current.role !== 'super_admin' && item.zone !== currentUserRef.current.name) return item;
+            if (reportZone && item.zone !== reportZone) return item;
+            return { ...item, payment_month: val };
+        }));
+        e.target.value = "";
+        alert('✅ ធ្វើបច្ចុប្បន្នភាពខែជោគជ័យ!');
     }
   };
 
@@ -449,7 +501,7 @@ export default function Map() {
     if(confirm(`តើអ្នកពិតជាចង់ប្តូរស្ថានភាពសម្រាប់ផ្ទះទាំងអស់ក្នុងតំបន់នេះមែនទេ?`)) { 
         let query = supabaseClient.from('households').update({ status_color: val });
         if (currentUserRef.current.role !== 'super_admin') query = query.eq('zone', currentUserRef.current.name); else if (reportZone) query = query.eq('zone', reportZone); else query = query.not('id', 'is', null); 
-        await query; fetchAndRenderData(currentUserRef.current); e.target.value = "";
+        await query; fetchAndRenderData(currentUserRef.current); e.target.value = ""; // ទុក fetch ព្រោះវាត្រូវដូរព៌ណនៅលើ Map ទាំងអស់
     }
   };
 
@@ -603,13 +655,12 @@ export default function Map() {
             <div className="flex flex-col gap-1.5"><span className="text-[11px] text-slate-700 font-bold">លេខកូដផ្ទះ៖</span><input type="text" value={editForm.custom_id} onChange={(e) => setEditForm({...editForm, custom_id: e.target.value})} className="w-full px-3 py-2.5 text-sm font-bold text-slate-800 bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-500 transition-colors" /></div>
             <div className="flex flex-col gap-1.5"><span className="text-[11px] text-slate-700 font-bold">ឈ្មោះអតិថិជន (ម្ចាស់ហាង/សំអាង)៖</span><input type="text" value={editForm.customer_name} onChange={(e) => setEditForm({...editForm, customer_name: e.target.value})} className="w-full px-3 py-2.5 text-sm font-bold text-slate-800 bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-500 transition-colors" /></div>
             
-            {/* 🚀 ជួសជុល Input ប្រាក់ឱ្យមានក្បៀស (,) តែរក្សាទិន្នន័យជាលេខ */}
             <div className="flex flex-col gap-1.5"><span className="text-[11px] text-slate-700 font-bold">តម្លៃសេវា (៛)៖</span>
               <input 
                 type="text" 
                 value={editForm.monthly_fee === '' ? '' : Number(editForm.monthly_fee).toLocaleString()} 
                 onChange={(e) => {
-                  const rawValue = e.target.value.replace(/,/g, '').replace(/\D/g, ''); // យកតែលេខសុទ្ធ
+                  const rawValue = e.target.value.replace(/,/g, '').replace(/\D/g, ''); 
                   setEditForm({...editForm, monthly_fee: rawValue === '' ? '' : Number(rawValue)});
                 }} 
                 className="w-full px-3 py-2.5 text-sm font-black text-emerald-600 bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-500 transition-colors" 
