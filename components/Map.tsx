@@ -30,7 +30,7 @@ export default function Map() {
   const [deviceChoice, setDeviceChoice] = useState<'pc' | 'mobile' | null>(null); 
 
   const [isMapReady, setIsMapReady] = useState(false);
-  const [isFetchingData, setIsFetchingData] = useState(false); // 🚀 ថ្មី: សម្រាប់បង្ហាញ Loading
+  const [isFetchingData, setIsFetchingData] = useState(false);
 
   const [activeView, setActiveView] = useState<'map' | 'report'>('map');
   const [allData, setAllData] = useState<any[]>([]);
@@ -38,10 +38,10 @@ export default function Map() {
   const [selectedHome, setSelectedHome] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState('');
   
-  const [editForm, setEditForm] = useState({ custom_id: '', customer_name: '', monthly_fee: 0, zone: '', status_color: 'yellow', payment_month: 'ខែមករា', photo_url: '' });
+  const [editForm, setEditForm] = useState<any>({ custom_id: '', customer_name: '', monthly_fee: 0, zone: '', status_color: 'yellow', payment_month: 'ខែមករា', photo_url: '' });
   const [roadEditData, setRoadEditData] = useState<any>(null);
   const [payMonth, setPayMonth] = useState('ខែមករា');
-  const [payNumMonths, setPayNumMonths] = useState(1);
+  const [payNumMonths, setPayNumMonths] = useState<any>(1);
   const [isManualEditOpen, setIsManualEditOpen] = useState(false);
   
   const [historyModalOpen, setHistoryModalOpen] = useState(false);
@@ -53,7 +53,6 @@ export default function Map() {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
 
-  // 🚀 Toggles បិទជា Default (OFF) 
   const [pointToggle, setPointToggle] = useState(false);
   const [polygonToggle, setPolygonToggle] = useState(false);
   const [roadToggle, setRoadToggle] = useState(false);
@@ -176,7 +175,7 @@ export default function Map() {
   const fetchAndRenderData = async (userToUse: any) => {
     if (!userToUse || !mapInstance.current) return; 
 
-    setIsFetchingData(true); // 🚀 បើកកូនបារ Loading
+    setIsFetchingData(true); 
 
     if (pointsLayer.current) pointsLayer.current.clearLayers();
     if (polygonsLayer.current) polygonsLayer.current.clearLayers();
@@ -198,16 +197,14 @@ export default function Map() {
     if (roadsRes.data) roadsRes.data.forEach(addRoadToMap); 
     if (bordersRes.data) bordersRes.data.forEach(addBorderToMap);
 
-    setIsFetchingData(false); // 🚀 បិទ Loading ពេលទាញចប់
+    setIsFetchingData(false); 
   };
 
-  // 🚀 Initialize Map 
   useEffect(() => {
     delete (L.Icon.Default.prototype as any)._getIconUrl;
     L.Icon.Default.mergeOptions({ iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png', iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png', shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png' });
 
     if (typeof window !== 'undefined' && mapRef.current && !mapInstance.current) {
-      // 🚀 preferCanvas: true ល្បឿនអស្ចារ្យ មិនទាមទារ Panes ច្រើនទេ!
       mapInstance.current = L.map(mapRef.current, { zoomControl: false, preferCanvas: true }).setView([11.99, 105.46], 15);
       L.control.zoom({ position: 'bottomright' }).addTo(mapInstance.current);
       L.tileLayer('https://{s}.google.com/vt/lyrs=s,h&x={x}&y={y}&z={z}', { maxZoom: 21, subdomains: ['mt0', 'mt1', 'mt2', 'mt3'] }).addTo(mapInstance.current);
@@ -220,13 +217,12 @@ export default function Map() {
         }
       }
 
-      // 🚀 បង្កើត Group សម្រាប់ផ្ទុកទិន្នន័យ (អត់ទាន់ Add ចូលផែនទីទេ)
       pointsLayer.current = L.featureGroup();
       polygonsLayer.current = L.featureGroup();
       roadsLayer.current = L.featureGroup();
       bordersLayer.current = L.featureGroup();
 
-      setIsMapReady(true); // ប្រាប់ថារួចរាល់ហើយ
+      setIsMapReady(true); 
 
       mapInstance.current.on('pm:create', async (e: any) => {
         if (!currentUserRef.current) { alert('🔒 សូមចូលគណនី (Login) ជាមុនសិន។'); mapInstance.current?.removeLayer(e.layer); return; }
@@ -286,7 +282,6 @@ export default function Map() {
     }
   }, []);
 
-  // 🚀 Native Leaflet Toggling: Add/Remove Layer ធានាថាលេចចេញ ១០០%
   useEffect(() => {
     if (mapInstance.current && pointsLayer.current) {
       if (pointToggle) {
@@ -346,10 +341,12 @@ export default function Map() {
 
   const handleUpdate = async () => {
     if (!selectedHome || !selectedHome.id) return;
-    const { error } = await supabaseClient.from('households').update({ custom_id: editForm.custom_id, customer_name: editForm.customer_name, monthly_fee: editForm.monthly_fee, zone: editForm.zone, status_color: editForm.status_color, payment_month: editForm.payment_month }).eq('id', selectedHome.id);
+    const finalFee = editForm.monthly_fee === '' ? 0 : Number(editForm.monthly_fee);
+
+    const { error } = await supabaseClient.from('households').update({ custom_id: editForm.custom_id, customer_name: editForm.customer_name, monthly_fee: finalFee, zone: editForm.zone, status_color: editForm.status_color, payment_month: editForm.payment_month }).eq('id', selectedHome.id);
     if (!error) { 
       let colorHex = editForm.status_color === 'blue' ? '#2563eb' : editForm.status_color === 'red' ? '#dc2626' : editForm.status_color === 'black' ? '#020617' : '#f59e0b';
-      updateMarkerColorLocally(selectedHome.id, colorHex); setSelectedHome({ ...selectedHome, ...editForm }); alert('✅ រក្សាទុកព័ត៌មានអតិថិជនបានជោគជ័យ!'); 
+      updateMarkerColorLocally(selectedHome.id, colorHex); setSelectedHome({ ...selectedHome, ...editForm, monthly_fee: finalFee }); setEditForm({...editForm, monthly_fee: finalFee}); alert('✅ រក្សាទុកព័ត៌មានអតិថិជនបានជោគជ័យ!'); 
     } else { alert(`❌ មានបញ្ហាក្នុងការរក្សាទុក! Error: ${error.message}`); }
   };
 
@@ -359,12 +356,14 @@ export default function Map() {
     if (startIdx === -1) { alert("សូមជ្រើសរើសខែបង់ប្រាក់!"); return; }
 
     const recordsToInsert = []; let lastPaidMonthIndex = startIdx; const now = new Date();
+    const feeAmount = editForm.monthly_fee === '' ? 0 : Number(editForm.monthly_fee);
+    const loopCount = Number(payNumMonths) || 1;
 
-    for (let i = 0; i < payNumMonths; i++) {
+    for (let i = 0; i < loopCount; i++) {
         let targetMonthIndex = (startIdx + i) % 12; let targetMonthNumber = targetMonthIndex + 1; let targetYear = now.getFullYear();
         if (startIdx + i > 11) { targetYear += Math.floor((startIdx + i) / 12); }
         lastPaidMonthIndex = targetMonthIndex;
-        recordsToInsert.push({ household_id: selectedHome.id, custom_id: selectedHome.custom_id, customer_name: selectedHome.customer_name, amount: Number(selectedHome.monthly_fee) || 0, month: targetMonthNumber, year: targetYear, status: 'paid', zone: selectedHome.zone, collected_by: currentUserRef.current?.name || '', paid_at: now.toISOString() });
+        recordsToInsert.push({ household_id: selectedHome.id, custom_id: selectedHome.custom_id, customer_name: selectedHome.customer_name, amount: feeAmount, month: targetMonthNumber, year: targetYear, status: 'paid', zone: selectedHome.zone, collected_by: currentUserRef.current?.name || '', paid_at: now.toISOString() });
     }
 
     const { error: insertErr } = await supabaseClient.from('payments').insert(recordsToInsert);
@@ -489,7 +488,6 @@ export default function Map() {
         @keyframes pulse { 0% { transform: translate(-50%, -50%) scale(0.5); opacity: 1; } 100% { transform: translate(-50%, -50%) scale(1.5); opacity: 0; } }
       `}} />
 
-      {/* 🚀 បារបង្ហាញពេលកំពុងទាញយកទិន្នន័យ (Loading Indicator) */}
       {isFetchingData && (
         <div className="absolute top-20 left-1/2 transform -translate-x-1/2 z-[3000] bg-indigo-600 text-white px-5 py-2.5 rounded-full shadow-2xl flex items-center gap-3 animate-pulse border border-indigo-400">
           <Loader2 className="animate-spin" size={18} />
@@ -604,10 +602,27 @@ export default function Map() {
             <div className="flex flex-col gap-1"><span className="text-[11px] text-slate-700 font-bold flex items-center gap-1"><Camera size={14}/> រូបថត៖</span><div className="w-full h-32 bg-slate-100 rounded-lg overflow-hidden border border-slate-200 flex items-center justify-center">{editForm.photo_url ? ( <img src={editForm.photo_url} className="w-full h-full object-cover" alt="Customer" /> ) : ( <span className="text-slate-400 text-xs font-bold">គ្មានរូបថត</span> )}</div></div>
             <div className="flex flex-col gap-1.5"><span className="text-[11px] text-slate-700 font-bold">លេខកូដផ្ទះ៖</span><input type="text" value={editForm.custom_id} onChange={(e) => setEditForm({...editForm, custom_id: e.target.value})} className="w-full px-3 py-2.5 text-sm font-bold text-slate-800 bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-500 transition-colors" /></div>
             <div className="flex flex-col gap-1.5"><span className="text-[11px] text-slate-700 font-bold">ឈ្មោះអតិថិជន (ម្ចាស់ហាង/សំអាង)៖</span><input type="text" value={editForm.customer_name} onChange={(e) => setEditForm({...editForm, customer_name: e.target.value})} className="w-full px-3 py-2.5 text-sm font-bold text-slate-800 bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-500 transition-colors" /></div>
-            <div className="flex flex-col gap-1.5"><span className="text-[11px] text-slate-700 font-bold">តម្លៃសេវា (៛)៖</span><input type="number" value={editForm.monthly_fee} onChange={(e) => setEditForm({...editForm, monthly_fee: parseFloat(e.target.value)})} className="w-full px-3 py-2.5 text-sm font-black text-emerald-600 bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-500 transition-colors" /></div>
+            
+            {/* 🚀 ជួសជុល Input ប្រាក់ឱ្យមានក្បៀស (,) តែរក្សាទិន្នន័យជាលេខ */}
+            <div className="flex flex-col gap-1.5"><span className="text-[11px] text-slate-700 font-bold">តម្លៃសេវា (៛)៖</span>
+              <input 
+                type="text" 
+                value={editForm.monthly_fee === '' ? '' : Number(editForm.monthly_fee).toLocaleString()} 
+                onChange={(e) => {
+                  const rawValue = e.target.value.replace(/,/g, '').replace(/\D/g, ''); // យកតែលេខសុទ្ធ
+                  setEditForm({...editForm, monthly_fee: rawValue === '' ? '' : Number(rawValue)});
+                }} 
+                className="w-full px-3 py-2.5 text-sm font-black text-emerald-600 bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-500 transition-colors" 
+              />
+            </div>
+
             <div className="flex flex-col gap-1.5"><span className="text-[11px] text-slate-700 font-bold">តំបន់ (Zone)៖</span><input type="text" value={editForm.zone} onChange={(e) => setEditForm({...editForm, zone: e.target.value})} className="w-full px-3 py-2.5 text-sm font-bold text-slate-800 bg-slate-50 border border-slate-200 rounded-lg outline-none" disabled={currentUser?.role !== 'super_admin'} /></div>
             {editForm.status_color === 'blue' ? ( <div className="w-full mt-2 p-3 rounded-xl font-bold bg-emerald-50 text-emerald-700 text-[13px] border border-emerald-100 flex items-center justify-center gap-2 shadow-sm"><CheckCircle size={16} /> បានបង់រួចរាល់ (ខែបន្ទាប់៖ {editForm.payment_month})</div> ) : ( <div className="w-full mt-2 p-3 rounded-xl bg-amber-50 text-amber-800 text-sm border border-amber-100 shadow-sm flex flex-col items-center"><div className="font-bold flex items-center gap-2 mb-1 text-[12px]"><Clock size={14}/> ស្ថានភាពបច្ចុប្បន្ន</div><div className="font-black text-amber-700 text-[13px]">{editForm.payment_month} (មិនទាន់បានបង់)</div></div> )}
-            {editForm.status_color !== 'blue' && ( <div className="mt-2 p-4 rounded-xl border border-indigo-100 bg-indigo-50 shadow-sm"><label className="block text-[11px] font-black text-indigo-900 mb-2">បង់ប្រាក់ (រើសខែ និងចំនួនខែ)៖</label><select value={payMonth} onChange={(e) => setPayMonth(e.target.value)} className="w-full mb-3 border border-indigo-200 px-3 py-2 rounded-lg font-bold text-slate-700 bg-white outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer">{monthsList.map(m => <option key={m} value={m}>បង់ចាប់ពី៖ {m}</option>)}</select><div className="flex items-center gap-3"><input type="number" value={payNumMonths} onChange={(e) => setPayNumMonths(parseInt(e.target.value) || 1)} min="1" max="12" className="w-20 border border-indigo-200 px-3 py-2.5 rounded-lg font-bold text-lg text-center outline-none focus:ring-2 focus:ring-amber-400 bg-white shadow-inner" /><button onClick={handleQuickPay} className="flex-1 bg-amber-500 text-white font-bold py-3 rounded-lg hover:bg-amber-600 transition-colors shadow-md flex justify-center items-center gap-2 text-[13px] cursor-pointer"><DollarSign size={16}/> បង់ប្រាក់</button></div></div> )}
+            
+            {editForm.status_color !== 'blue' && ( <div className="mt-2 p-4 rounded-xl border border-indigo-100 bg-indigo-50 shadow-sm"><label className="block text-[11px] font-black text-indigo-900 mb-2">បង់ប្រាក់ (រើសខែ និងចំនួនខែ)៖</label><select value={payMonth} onChange={(e) => setPayMonth(e.target.value)} className="w-full mb-3 border border-indigo-200 px-3 py-2 rounded-lg font-bold text-slate-700 bg-white outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer">{monthsList.map(m => <option key={m} value={m}>បង់ចាប់ពី៖ {m}</option>)}</select><div className="flex items-center gap-3">
+              <input type="number" value={payNumMonths} onChange={(e) => setPayNumMonths(e.target.value === '' ? '' : parseInt(e.target.value))} min="1" max="12" className="w-20 border border-indigo-200 px-3 py-2.5 rounded-lg font-bold text-lg text-center outline-none focus:ring-2 focus:ring-amber-400 bg-white shadow-inner" />
+              <button onClick={handleQuickPay} className="flex-1 bg-amber-500 text-white font-bold py-3 rounded-lg hover:bg-amber-600 transition-colors shadow-md flex justify-center items-center gap-2 text-[13px] cursor-pointer"><DollarSign size={16}/> បង់ប្រាក់</button></div></div> )}
+            
             <div className="mt-2 border border-slate-200 rounded-xl bg-slate-50 shadow-sm">
               <div onClick={() => setIsManualEditOpen(!isManualEditOpen)} className="p-3 font-bold text-slate-700 text-[12px] cursor-pointer hover:bg-slate-200 flex items-center justify-center gap-2 transition-colors rounded-xl"><Sliders size={16} className="text-indigo-500"/> ជម្រើសកែប្រែដោយដៃ (Manual Edit)</div>
               {isManualEditOpen && (
