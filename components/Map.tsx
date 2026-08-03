@@ -59,9 +59,10 @@ export default function Map() {
   const [borderLive, setBorderLive] = useState(false);
 
   const currentUserRef = useRef<any>(null);
-  
-  // 🚀 បន្ថែម Memory Ref សម្រាប់ទាញយកទិន្នន័យ Update ថ្មីៗដោយមិនបាច់ Refresh
   const allDataRef = useRef<any[]>([]);
+  
+  // 🚀 អាវុធសម្ងាត់ទប់ស្កាត់ការ Fetch ច្រើនដង! 
+  const hasFetchedRef = useRef(false);
 
   const monthsList = ['ខែមករា', 'ខែកកុម្ភៈ', 'ខែមីនា', 'ខែមេសា', 'ខែឧសភា', 'ខែមិថុនា', 'ខែកក្កដា', 'ខែសីហា', 'ខែកញ្ញា', 'ខែតុលា', 'ខែវិច្ឆិកា', 'ខែធ្នូ'];
 
@@ -89,12 +90,13 @@ export default function Map() {
   }, []);
 
   useEffect(() => {
-    if (currentUser && isMapReady) {
+    // 🚀 អនុញ្ញាតឱ្យ Fetch តែម្តងគត់ ទោះបង Save កូដប៉ុន្មានដងក៏ដោយ!
+    if (currentUser && isMapReady && !hasFetchedRef.current) {
+      hasFetchedRef.current = true;
       fetchAndRenderData(currentUser);
     }
   }, [currentUser, isMapReady]);
 
-  // 🚀 Update អង្គចងចាំ (Ref) គ្រប់ពេលដែល allData ដូរ (ពេល Save/Pay)
   useEffect(() => {
     allDataRef.current = allData;
   }, [allData]);
@@ -135,22 +137,10 @@ export default function Map() {
 
     if (layer) {
       layer.on('click', () => {
-        // 🚀 ទាញយកទិន្នន័យថ្មីចែសពី Memory (Ref) ជំនួសឱ្យការប្រើទិន្នន័យចាស់
         const freshData = allDataRef.current.find((item: any) => item.id === h.id) || h;
-        
         setSelectedHome(freshData); 
-        setEditForm({ 
-            custom_id: freshData.custom_id || '', 
-            customer_name: freshData.customer_name || '', 
-            monthly_fee: freshData.monthly_fee || 0, 
-            zone: freshData.zone || '', 
-            status_color: freshData.status_color || 'yellow', 
-            payment_month: freshData.payment_month || 'ខែមករា', 
-            photo_url: freshData.photo_url || '' 
-        }); 
-        setPayMonth(freshData.payment_month || 'ខែមករា'); 
-        setPayNumMonths(1); 
-        setIsManualEditOpen(false); 
+        setEditForm({ custom_id: freshData.custom_id || '', customer_name: freshData.customer_name || '', monthly_fee: freshData.monthly_fee || 0, zone: freshData.zone || '', status_color: freshData.status_color || 'yellow', payment_month: freshData.payment_month || 'ខែមករា', photo_url: freshData.photo_url || '' }); 
+        setPayMonth(freshData.payment_month || 'ខែមករា'); setPayNumMonths(1); setIsManualEditOpen(false); 
       });
     }
   };
@@ -185,7 +175,8 @@ export default function Map() {
           const newZoneName = prompt("កែប្រែឈ្មោះតំបន់ (Zone) សម្រាប់ព្រំដែននេះ៖", b.zone);
           if (newZoneName && newZoneName.trim() !== "" && newZoneName !== b.zone) {
               await supabaseClient.from('zone_borders').update({ zone: newZoneName.trim() }).eq('id', b.id);
-              fetchAndRenderData(currentUserRef.current); 
+              // 🚀 Update តែ Tooltip លែង Fetch ថ្មី
+              l.bindTooltip(`ព្រំដែនតំបន់៖ <b>${newZoneName.trim()}</b>`, { sticky: true, className: 'font-bold text-sm bg-white px-2 py-1 shadow-md border border-slate-200 rounded' });
           }
         });
       });
@@ -368,13 +359,10 @@ export default function Map() {
     if (!error) { 
       let colorHex = editForm.status_color === 'blue' ? '#2563eb' : editForm.status_color === 'red' ? '#dc2626' : editForm.status_color === 'black' ? '#020617' : '#f59e0b';
       updateMarkerColorLocally(selectedHome.id, colorHex); 
-      
-      // 🚀 Update Memory (allData) ភ្លាមៗដោយមិនបាច់ Refresh!
       const updatedHome = { ...selectedHome, ...editForm, monthly_fee: finalFee };
       setAllData(prev => prev.map(item => item.id === selectedHome.id ? updatedHome : item));
-      
       alert('✅ រក្សាទុកព័ត៌មានអតិថិជនបានជោគជ័យ!'); 
-      setSelectedHome(null); // បិទផ្ទាំងអូតូ
+      setSelectedHome(null); 
     } else { alert(`❌ មានបញ្ហាក្នុងការរក្សាទុក! Error: ${error.message}`); }
   };
 
@@ -402,12 +390,9 @@ export default function Map() {
 
     if (!error) {
       alert('✅ ការបង់ប្រាក់ទទួលបានជោគជ័យ!'); updateMarkerColorLocally(selectedHome.id, '#2563eb'); 
-      
-      // 🚀 Update Memory (allData) ភ្លាមៗដោយមិនបាច់ Refresh!
       const updatedHome = { ...selectedHome, status_color: 'blue', payment_month: nextMonthStr };
       setAllData(prev => prev.map(item => item.id === selectedHome.id ? updatedHome : item));
-      
-      setSelectedHome(null); // បិទផ្ទាំងអូតូ
+      setSelectedHome(null); 
     } else { alert(`❌ បរាជ័យក្នុងការ Update ស្ថានភាពផ្ទះ! Error: ${error.message}`); }
   };
 
@@ -424,13 +409,9 @@ export default function Map() {
     await supabaseClient.from('payments').delete().eq('id', paymentId);
     await supabaseClient.from('households').update({ status_color: 'yellow', payment_month: monthStr }).eq('id', selectedHome.id);
     updateMarkerColorLocally(selectedHome.id, '#f59e0b'); 
-    
-    // 🚀 Update Memory (allData) ភ្លាមៗ
     const updatedHome = { ...selectedHome, status_color: 'yellow', payment_month: monthStr };
     setAllData(prev => prev.map(item => item.id === selectedHome.id ? updatedHome : item));
-    
-    setEditForm({...editForm, status_color: 'yellow', payment_month: monthStr}); 
-    setSelectedHome(updatedHome);
+    setEditForm({...editForm, status_color: 'yellow', payment_month: monthStr}); setSelectedHome(updatedHome);
     handleOpenHistory(); 
   };
 
@@ -451,7 +432,6 @@ export default function Map() {
     if (data && data.length > 0) {
       const h = data[0];
       if (mapInstance.current && h.lat && h.lng) mapInstance.current.flyTo([h.lat, h.lng], 18, { animate: true, duration: 1.5 });
-      
       const freshData = allDataRef.current.find((item: any) => item.id === h.id) || h;
       setSelectedHome(freshData); 
       setEditForm({ custom_id: freshData.custom_id || '', customer_name: freshData.customer_name || '', monthly_fee: freshData.monthly_fee || 0, zone: freshData.zone || '', status_color: freshData.status_color || 'yellow', payment_month: freshData.payment_month || 'ខែមករា', photo_url: freshData.photo_url || '' }); 
@@ -473,9 +453,12 @@ export default function Map() {
 
   const openReport = async () => {
     setActiveView('report');
-    let query = supabaseClient.from('payments').select('*');
-    if (currentUserRef.current && currentUserRef.current.role !== 'super_admin') { query = query.eq('zone', currentUserRef.current.name); }
-    const { data } = await query; if (data) setPaymentsData(data);
+    // 🚀 អនុញ្ញាតឱ្យ Fetch តែម្តង ពេលចូល Report ទប់ស្កាត់ការស៊ី Quota!
+    if (paymentsData.length === 0) {
+        let query = supabaseClient.from('payments').select('*');
+        if (currentUserRef.current && currentUserRef.current.role !== 'super_admin') { query = query.eq('zone', currentUserRef.current.name); }
+        const { data } = await query; if (data) setPaymentsData(data);
+    }
   };
 
   const handleGlobalMonthChange = async (e: any) => {
@@ -484,8 +467,6 @@ export default function Map() {
         let query = supabaseClient.from('households').update({ payment_month: val });
         if (currentUserRef.current.role !== 'super_admin') query = query.eq('zone', currentUserRef.current.name); else if (reportZone) query = query.eq('zone', reportZone); else query = query.not('id', 'is', null); 
         await query; 
-        
-        // 🚀 Update Memory អូតូ មិនបាច់ Fetch ថ្មី
         setAllData(prev => prev.map(item => {
             if (currentUserRef.current.role !== 'super_admin' && item.zone !== currentUserRef.current.name) return item;
             if (reportZone && item.zone !== reportZone) return item;
@@ -501,7 +482,31 @@ export default function Map() {
     if(confirm(`តើអ្នកពិតជាចង់ប្តូរស្ថានភាពសម្រាប់ផ្ទះទាំងអស់ក្នុងតំបន់នេះមែនទេ?`)) { 
         let query = supabaseClient.from('households').update({ status_color: val });
         if (currentUserRef.current.role !== 'super_admin') query = query.eq('zone', currentUserRef.current.name); else if (reportZone) query = query.eq('zone', reportZone); else query = query.not('id', 'is', null); 
-        await query; fetchAndRenderData(currentUserRef.current); e.target.value = ""; // ទុក fetch ព្រោះវាត្រូវដូរព៌ណនៅលើ Map ទាំងអស់
+        await query; 
+        
+        // 🚀 Update Local Map លែង Fetch ថ្មី
+        let colorHex = val === 'blue' ? '#2563eb' : val === 'red' ? '#dc2626' : val === 'black' ? '#020617' : '#f59e0b';
+        pointsLayer.current?.eachLayer((layer: any) => {
+            const h = allDataRef.current.find(d => d.id === layer.options.dbId);
+            if (h && (currentUserRef.current.role === 'super_admin' ? (reportZone ? h.zone === reportZone : true) : h.zone === currentUserRef.current.name)) {
+                layer.setStyle({ fillColor: colorHex });
+            }
+        });
+        polygonsLayer.current?.eachLayer((layer: any) => {
+            const h = allDataRef.current.find(d => d.id === layer.options.dbId);
+            if (h && (currentUserRef.current.role === 'super_admin' ? (reportZone ? h.zone === reportZone : true) : h.zone === currentUserRef.current.name)) {
+                layer.setStyle({ fillColor: colorHex });
+            }
+        });
+
+        setAllData(prev => prev.map(item => {
+            if (currentUserRef.current.role !== 'super_admin' && item.zone !== currentUserRef.current.name) return item;
+            if (reportZone && item.zone !== reportZone) return item;
+            return { ...item, status_color: val };
+        }));
+
+        e.target.value = "";
+        alert('✅ ធ្វើបច្ចុប្បន្នភាពស្ថានភាពជោគជ័យ!');
     }
   };
 
@@ -531,6 +536,9 @@ export default function Map() {
   const paginatedHouseholds = reportHouseholds.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
   const totalPages = Math.ceil(totalHouses / itemsPerPage);
 
+  const todayDate = new Date();
+  const billDateString = `${todayDate.getDate().toString().padStart(2, '0')}-${(todayDate.getMonth()+1).toString().padStart(2, '0')}-${todayDate.getFullYear()}`;
+
   return (
     <div className="flex flex-col h-screen w-full bg-slate-50 overflow-hidden font-sans relative">
       <style dangerouslySetInnerHTML={{__html: `
@@ -538,320 +546,433 @@ export default function Map() {
         .live-location-dot { width: 14px; height: 14px; background-color: #2563eb; border: 3px solid white; border-radius: 50%; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 2; box-shadow: 0 2px 4px rgba(0,0,0,0.3); }
         .live-location-pulse { width: 40px; height: 40px; background-color: rgba(37, 99, 235, 0.4); border-radius: 50%; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1; animation: pulse 2s infinite ease-in-out; }
         @keyframes pulse { 0% { transform: translate(-50%, -50%) scale(0.5); opacity: 1; } 100% { transform: translate(-50%, -50%) scale(1.5); opacity: 0; } }
+        
+        @media print {
+          body * { visibility: hidden; }
+          #print-bill-container, #print-bill-container * { visibility: visible; }
+          #print-bill-container { position: absolute; left: 0; top: 0; width: 100%; margin: 0; padding: 20px; }
+          @page { size: A4 portrait; margin: 1cm; }
+        }
       `}} />
 
-      {isFetchingData && (
-        <div className="absolute top-20 left-1/2 transform -translate-x-1/2 z-[3000] bg-indigo-600 text-white px-5 py-2.5 rounded-full shadow-2xl flex items-center gap-3 animate-pulse border border-indigo-400">
-          <Loader2 className="animate-spin" size={18} />
-          <span className="font-bold text-sm tracking-wide">កំពុងទាញយកទិន្នន័យ...</span>
+      {/* 🚀 ផ្ទាំងវិក័យប័ត្រ (ឃើញតែពេល Print) */}
+      {selectedHome && (
+        <div id="print-bill-container" className="hidden print:block bg-white text-black font-sans w-full max-w-[800px] mx-auto">
+            <div className="flex justify-between items-start mb-6">
+                <div className="flex flex-col items-center w-1/3">
+                    <div className="w-24 h-24 rounded-full border-2 border-black flex items-center justify-center mb-2 overflow-hidden">
+                        <img src="/logo/Map Ark.png" alt="Logo" className="w-full h-full object-cover grayscale" />
+                    </div>
+                    <h2 className="font-black text-2xl tracking-wider uppercase mt-2">Maps Ark</h2>
+                </div>
+                
+                <div className="w-2/3 text-right">
+                    <h1 className="font-black text-2xl mb-4">វិក្កយបត្រសេវាប្រមូលសំរាម</h1>
+                    <div className="flex flex-col items-end gap-1 text-sm font-medium">
+                        <div className="flex justify-between w-64"><span className="text-gray-600">លេខសម្គាល់អតិថិជន៖</span> <span className="font-bold">{editForm.custom_id || 'N/A'}</span></div>
+                        <div className="flex justify-between w-64"><span className="text-gray-600">ឈ្មោះអតិថិជន៖</span> <span className="font-bold">{editForm.customer_name || 'មិនមានឈ្មោះ'}</span></div>
+                        <div className="flex justify-between w-64"><span className="text-gray-600">លេខវិក្កយបត្រ៖</span> <span className="font-bold">INV-{Math.floor(100000 + Math.random() * 900000)}</span></div>
+                        <div className="flex justify-between w-64"><span className="text-gray-600">អ្នកទទួលប្រាក់៖</span> <span className="font-bold">{editForm.zone || 'N/A'}</span></div>
+                        <div className="flex justify-between w-64"><span className="text-gray-600">ថ្ងៃចេញវិក្កយបត្រ៖</span> <span className="font-bold">{billDateString}</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <div className="text-xs mb-4 text-gray-700 font-medium leading-relaxed">
+                អាសយដ្ឋាន៖ អាគារលេខ ០០៨៨ វិថីព្រះបាទនរោត្ដម ភូមិ៣ សង្កាត់កំពង់ចាម ក្រុងកំពង់ចាម ខេត្តកំពង់ចាម <br/>
+                លេខទំនាក់ទំនង៖ 096 603 7883 / 016 417 069 ទទួលទូរស័ព្ទពីថ្ងៃច័ន្ទ ដល់ថ្ងៃសុក្រ រៀងរាល់ម៉ោងធ្វើការ
+            </div>
+
+            <table className="w-full border-collapse border border-black mb-2 text-sm">
+                <thead>
+                    <tr className="bg-gray-100">
+                        <th className="border border-black p-2 text-left w-1/2">បរិយាយ / Description</th>
+                        <th className="border border-black p-2 text-center">ប្រចាំខែ / Month</th>
+                        <th className="border border-black p-2 text-right">ទឹកប្រាក់ / Amount</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td className="border border-black p-2 font-bold">សេវាប្រមូលសំរាម ៖ {editForm.customer_name}</td>
+                        <td className="border border-black p-2 text-center font-bold">{editForm.payment_month}</td>
+                        <td className="border border-black p-2 text-right font-bold">{Number(editForm.monthly_fee).toLocaleString()} ៛</td>
+                    </tr>
+                    <tr className="bg-gray-100">
+                        <td colSpan={2} className="border border-black p-2 text-right font-bold">ទឹកប្រាក់ត្រូវទូទាត់ / Total Amount Due</td>
+                        <td className="border border-black p-2 text-right font-black text-lg">{Number(editForm.monthly_fee).toLocaleString()} ៛</td>
+                    </tr>
+                </tbody>
+            </table>
+            
+            <div className="text-center text-xs text-gray-600 font-medium mb-6">
+                * បំណុលអតីតកាលបញ្ជូលវិញក្នុងវិក្កយបត្រ / Balance brought forward as of invoice date
+            </div>
+
+            <div className="flex justify-between items-start mb-8">
+                <div className="text-xs font-medium leading-relaxed">
+                    <span className="font-bold">ចំណាំ៖</span>
+                    <ul className="list-disc pl-5 mt-1 space-y-1">
+                        <li>ប្រាក់វិក្កយបត្រទាំងអស់គ្មានការបង្វិលសង ឬសងដោះដូរយឺតយ៉ាវ</li>
+                        <li>ការបង់ថ្លៃសេវាត្រូវតែមានវិក្កយបត្រ</li>
+                        <li>សូមពិនិត្យព័ត៌មានលើវិក្កយបត្រអោយបានច្បាស់មុនពេលបង់ប្រាក់</li>
+                        <li>របៀបបង់ប្រាក់៖ អាចបង់ថ្លៃសេវានៅរដ្ឋបាលក្រុងកំពង់ចាម ឬតាមមួយភ្នាក់ងារទំនាក់ទំនងផ្ទាល់ ឬតាម ABA App</li>
+                    </ul>
+                </div>
+                <div className={`px-6 py-2 border-2 border-black font-black text-lg tracking-widest uppercase ${editForm.status_color === 'blue' ? 'bg-gray-200' : 'bg-gray-300'}`}>
+                    {editForm.status_color === 'blue' ? 'PAID' : 'PENDING'}
+                </div>
+            </div>
+
+            <div className="border-t-2 border-dashed border-gray-400 my-8"></div>
+
+            <div className="border border-black p-4 rounded-lg flex justify-between items-start">
+                <div className="flex flex-col gap-1 text-sm font-medium w-2/3">
+                    <div className="flex"><span className="w-32">លេខសម្គាល់អតិថិជន៖</span> <span className="font-bold">{editForm.custom_id}</span></div>
+                    <div className="flex"><span className="w-32">ឈ្មោះអតិថិជន៖</span> <span className="font-bold">{editForm.customer_name}</span></div>
+                    <div className="flex"><span className="w-32">អាសយដ្ឋាន៖</span> <span className="font-bold">{editForm.zone}</span></div>
+                    <div className="flex"><span className="w-32">លេខទូរស័ព្ទអតិថិជន៖</span> <span className="font-bold">N/A</span></div>
+                    <div className="flex mt-2 pt-2 border-t border-gray-200"><span className="w-32 font-bold">ទឹកប្រាក់ត្រូវទូទាត់៖</span> <span className="font-black text-lg">{Number(editForm.monthly_fee).toLocaleString()} ៛</span></div>
+                </div>
+                
+                <div className="w-1/3 flex flex-col items-end">
+                    <span className="font-bold mb-2">លេខសម្គាល់អតិថិជន</span>
+                    <img src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${editForm.custom_id}`} alt="QR Code" className="w-24 h-24 border border-black p-1" />
+                </div>
+            </div>
+
+            <div className="flex gap-4 mt-4 h-32">
+                <div className="w-1/2 border border-black rounded-lg overflow-hidden bg-gray-100 flex items-center justify-center">
+                    {editForm.photo_url ? (
+                        <img src={editForm.photo_url} className="w-full h-full object-cover grayscale" alt="Location" />
+                    ) : (
+                        <span className="text-gray-400 text-xs">គ្មានរូបថតទីតាំង</span>
+                    )}
+                </div>
+                <div className="w-1/2 border border-black rounded-lg overflow-hidden bg-gray-100 flex items-center justify-center">
+                   <span className="text-gray-400 text-xs">Map Placeholder</span>
+                </div>
+            </div>
         </div>
       )}
 
-      <header className="h-[64px] absolute top-0 left-0 right-0 bg-white/95 backdrop-blur-md flex justify-between items-center px-4 sm:px-6 z-[2000] shadow-sm">
-        <div className="flex items-center gap-2 sm:gap-3">
-          <img src="/logo/Map Ark.png" alt="Logo" onError={(e) => e.currentTarget.style.display='none'} className="w-8 h-8 object-contain rounded-md" />
-          <h1 className="text-lg sm:text-xl font-bold text-indigo-700 hidden sm:block">Maps Ark</h1>
-          {currentUser && (
-            <span className={`text-[10px] sm:text-xs px-2 py-1 rounded-full font-bold border shadow-sm flex items-center gap-1 ${currentUser.role === 'super_admin' ? 'bg-purple-100 text-purple-700 border-purple-200' : currentUser.role === 'admin' ? 'bg-rose-100 text-rose-700 border-rose-200' : 'bg-emerald-100 text-emerald-700 border-emerald-200'}`}>
-              {currentUser.role === 'super_admin' ? 'Super Admin 👑' : currentUser.role === 'admin' ? 'Admin' : `ប្រមូល៖ ${currentUser.name}`}
-            </span>
-          )}
-        </div>
-        <div className="flex gap-2 sm:gap-4 items-center">
-          {activeView === 'map' ? (
-            <button onClick={openReport} className="flex items-center gap-1 sm:gap-2 px-3 sm:px-5 py-2 text-[11px] sm:text-sm font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl transition-all shadow-sm cursor-pointer"><PieChart size={16} className="text-indigo-600" /> <span className="hidden sm:inline">របាយការណ៍</span></button>
-          ) : (
-            <button onClick={() => setActiveView('map')} className="flex items-center gap-1 sm:gap-2 px-3 sm:px-5 py-2 text-[11px] sm:text-sm font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 rounded-xl transition-all shadow-sm cursor-pointer"><MapIcon size={16} /> <span className="hidden sm:inline">ផែនទី</span></button>
-          )}
-          {currentUser ? (
-            <button onClick={async () => { await supabaseClient.auth.signOut(); setCurrentUser(null); setDeviceChoice(null); setShowLoginModal(true); setActiveView('map'); }} className="flex items-center gap-1 sm:gap-2 px-3 sm:px-5 py-2 text-[11px] sm:text-sm font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-xl transition-all shadow-sm border border-rose-200 cursor-pointer"><LogOut size={16} /> <span className="hidden sm:inline">ចេញ</span></button>
-          ) : (
-            <button onClick={() => setShowLoginModal(true)} className="flex items-center gap-1 sm:gap-2 px-3 sm:px-5 py-2 text-[11px] sm:text-sm font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-xl transition-all shadow-sm border border-indigo-200 cursor-pointer"><LogIn size={16} /> <span className="hidden sm:inline">ចូល</span></button>
-          )}
-        </div>
-      </header>
-
-      <div className={`flex-1 relative w-full h-full ${activeView === 'map' ? 'flex' : 'hidden'}`}>
-        {!isToolsPanelOpen && (
-          <button onClick={() => setIsToolsPanelOpen(true)} className="absolute top-[80px] left-4 z-[1000] bg-white p-3 sm:p-3.5 rounded-2xl shadow-xl border border-slate-200 hover:bg-slate-50 transition-all cursor-pointer text-indigo-600 flex items-center justify-center hover:scale-105" title="បើកផ្ទាំងបញ្ជា"><Layers size={22} /></button>
+      {/* 🚀 ផ្នែក UI ធម្មតា */}
+      <div className="print:hidden w-full h-full flex flex-col relative">
+        {isFetchingData && (
+            <div className="absolute top-20 left-1/2 transform -translate-x-1/2 z-[3000] bg-indigo-600 text-white px-5 py-2.5 rounded-full shadow-2xl flex items-center gap-3 animate-pulse border border-indigo-400">
+            <Loader2 className="animate-spin" size={18} />
+            <span className="font-bold text-sm tracking-wide">កំពុងទាញយកទិន្នន័យ...</span>
+            </div>
         )}
 
-        {deviceChoice === 'mobile' && !isToolsPanelOpen && (
-          <button onClick={handleLocateMe} className="absolute top-[140px] left-4 z-[1000] bg-blue-600 p-3 sm:p-3.5 rounded-2xl shadow-xl border border-blue-700 hover:bg-blue-700 transition-all cursor-pointer text-white flex items-center justify-center hover:scale-105" title="ទីតាំងរបស់ខ្ញុំ"><Navigation size={22} /></button>
+        <header className="h-[64px] absolute top-0 left-0 right-0 bg-white/95 backdrop-blur-md flex justify-between items-center px-4 sm:px-6 z-[2000] shadow-sm">
+            <div className="flex items-center gap-2 sm:gap-3">
+            <img src="/logo/Map Ark.png" alt="Logo" onError={(e) => e.currentTarget.style.display='none'} className="w-8 h-8 object-contain rounded-md" />
+            <h1 className="text-lg sm:text-xl font-bold text-indigo-700 hidden sm:block">Maps Ark</h1>
+            {currentUser && (
+                <span className={`text-[10px] sm:text-xs px-2 py-1 rounded-full font-bold border shadow-sm flex items-center gap-1 ${currentUser.role === 'super_admin' ? 'bg-purple-100 text-purple-700 border-purple-200' : currentUser.role === 'admin' ? 'bg-rose-100 text-rose-700 border-rose-200' : 'bg-emerald-100 text-emerald-700 border-emerald-200'}`}>
+                {currentUser.role === 'super_admin' ? 'Super Admin 👑' : currentUser.role === 'admin' ? 'Admin' : `ប្រមូល៖ ${currentUser.name}`}
+                </span>
+            )}
+            </div>
+            <div className="flex gap-2 sm:gap-4 items-center">
+            {activeView === 'map' ? (
+                <button onClick={openReport} className="flex items-center gap-1 sm:gap-2 px-3 sm:px-5 py-2 text-[11px] sm:text-sm font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl transition-all shadow-sm cursor-pointer"><PieChart size={16} className="text-indigo-600" /> <span className="hidden sm:inline">របាយការណ៍</span></button>
+            ) : (
+                <button onClick={() => setActiveView('map')} className="flex items-center gap-1 sm:gap-2 px-3 sm:px-5 py-2 text-[11px] sm:text-sm font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 rounded-xl transition-all shadow-sm cursor-pointer"><MapIcon size={16} /> <span className="hidden sm:inline">ផែនទី</span></button>
+            )}
+            {currentUser ? (
+                <button onClick={async () => { await supabaseClient.auth.signOut(); setCurrentUser(null); setDeviceChoice(null); setShowLoginModal(true); setActiveView('map'); }} className="flex items-center gap-1 sm:gap-2 px-3 sm:px-5 py-2 text-[11px] sm:text-sm font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-xl transition-all shadow-sm border border-rose-200 cursor-pointer"><LogOut size={16} /> <span className="hidden sm:inline">ចេញ</span></button>
+            ) : (
+                <button onClick={() => setShowLoginModal(true)} className="flex items-center gap-1 sm:gap-2 px-3 sm:px-5 py-2 text-[11px] sm:text-sm font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-xl transition-all shadow-sm border border-indigo-200 cursor-pointer"><LogIn size={16} /> <span className="hidden sm:inline">ចូល</span></button>
+            )}
+            </div>
+        </header>
+
+        <div className={`flex-1 relative w-full h-full ${activeView === 'map' ? 'flex' : 'hidden'}`}>
+            {!isToolsPanelOpen && (
+            <button onClick={() => setIsToolsPanelOpen(true)} className="absolute top-[80px] left-4 z-[1000] bg-white p-3 sm:p-3.5 rounded-2xl shadow-xl border border-slate-200 hover:bg-slate-50 transition-all cursor-pointer text-indigo-600 flex items-center justify-center hover:scale-105" title="បើកផ្ទាំងបញ្ជា"><Layers size={22} /></button>
+            )}
+
+            {deviceChoice === 'mobile' && !isToolsPanelOpen && (
+            <button onClick={handleLocateMe} className="absolute top-[140px] left-4 z-[1000] bg-blue-600 p-3 sm:p-3.5 rounded-2xl shadow-xl border border-blue-700 hover:bg-blue-700 transition-all cursor-pointer text-white flex items-center justify-center hover:scale-105" title="ទីតាំងរបស់ខ្ញុំ"><Navigation size={22} /></button>
+            )}
+
+            <div className={`absolute top-[80px] left-4 z-[1050] w-[calc(100vw-32px)] sm:w-[340px] flex flex-col gap-4 transition-all duration-300 transform ${isToolsPanelOpen ? 'translate-x-0 opacity-100 pointer-events-auto' : '-translate-x-[400px] opacity-0 pointer-events-none'} hide-scrollbar overflow-y-auto max-h-[calc(100vh-100px)] pb-6`}>
+            <div className="bg-white/90 backdrop-blur-xl border border-white shadow-lg rounded-2xl p-3 flex items-center gap-2">
+                <input type="text" placeholder="ស្វែងរកលេខកូដ (KPC...)" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} className="flex-1 w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 outline-none text-sm font-bold text-slate-700 focus:border-indigo-500" />
+                <button onClick={handleSearch} className="bg-indigo-600 text-white p-2.5 rounded-xl hover:bg-indigo-700 cursor-pointer shadow-md"><Search size={20} /></button>
+                <button onClick={() => setIsToolsPanelOpen(false)} className="bg-rose-50 text-rose-600 p-2.5 rounded-xl hover:bg-rose-100 cursor-pointer border border-rose-200 shadow-sm" title="បិទផ្ទាំង"><X size={20} /></button>
+            </div>
+
+            <div className="bg-white/90 backdrop-blur-xl border border-white shadow-lg rounded-3xl p-5">
+                <h3 className="text-center font-black text-slate-700 text-sm border-b-2 border-indigo-500/20 pb-3 mb-4">📍 ចំណុចផ្ទះ (Point)</h3>
+                <div className="flex justify-around mb-4">
+                <button onClick={drawPoint} className="flex flex-col items-center gap-1.5 cursor-pointer group"><div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-indigo-600 shadow-sm border border-slate-200 group-hover:border-indigo-400 transition-all"><MapPin size={22} /></div><span className="text-[11px] font-bold text-slate-600">Add Point</span></button>
+                <button onClick={toggleRemove} className="flex flex-col items-center gap-1.5 cursor-pointer group"><div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-rose-500 shadow-sm border border-slate-200 group-hover:border-rose-400 transition-all"><Eraser size={22} /></div><span className="text-[11px] font-bold text-slate-600">Delete Point</span></button>
+                </div>
+                <div className="flex justify-center"><Toggle enabled={pointToggle} setEnabled={setPointToggle} /></div>
+            </div>
+
+            {(!currentUser || currentUser?.role === 'super_admin' || currentUser?.can_edit_roof) && (
+                <div className="bg-white/90 backdrop-blur-xl border border-white shadow-lg rounded-3xl p-5">
+                <h3 className="text-center font-black text-slate-700 text-sm border-b-2 border-indigo-500/20 pb-3 mb-4">🛑 ដំបូល (Polygon)</h3>
+                <div className="flex justify-between mb-4">
+                    <button onClick={drawPolygon} className="flex flex-col items-center gap-1 cursor-pointer text-indigo-600 hover:scale-110"><Hexagon size={20} /><span className="text-[10px] font-bold text-slate-600">Add</span></button>
+                    <button onClick={toggleEdit} className="flex flex-col items-center gap-1 cursor-pointer text-amber-500 hover:scale-110"><MapPin size={20} /><span className="text-[10px] font-bold text-slate-600">Edit</span></button>
+                    <button onClick={toggleCut} className="flex flex-col items-center gap-1 cursor-pointer text-sky-500 hover:scale-110"><Scissors size={20} /><span className="text-[10px] font-bold text-slate-600">Cut</span></button>
+                    <button onClick={toggleRemove} className="flex flex-col items-center gap-1 cursor-pointer text-rose-500 hover:scale-110"><Eraser size={20} /><span className="text-[10px] font-bold text-slate-600">Remove</span></button>
+                    <button onClick={toggleRotate} className="flex flex-col items-center gap-1 cursor-pointer text-emerald-500 hover:scale-110"><RotateCw size={20} /><span className="text-[10px] font-bold text-slate-600">Rotate</span></button>
+                </div>
+                <div className="flex justify-center"><Toggle enabled={polygonToggle} setEnabled={setPolygonToggle} /></div>
+                </div>
+            )}
+
+            {(!currentUser || currentUser?.role === 'super_admin' || currentUser?.can_edit_road) && (
+                <div className="bg-white/90 backdrop-blur-xl border border-white shadow-lg rounded-3xl p-5">
+                <h3 className="text-center font-black text-slate-700 text-sm border-b-2 border-indigo-500/20 pb-3 mb-4">🛣️ ផ្លូវ (Road)</h3>
+                <div className="flex justify-around mb-4">
+                    <button onClick={drawRoad} className="flex flex-col items-center gap-1.5 cursor-pointer group"><div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-indigo-600 shadow-sm border border-slate-200 group-hover:border-indigo-400 transition-all"><Slash size={22} /></div><span className="text-[11px] font-bold text-slate-600">Add Road</span></button>
+                    <button onClick={toggleEdit} className="flex flex-col items-center gap-1.5 cursor-pointer group"><div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-amber-500 shadow-sm border border-slate-200 group-hover:border-amber-400 transition-all"><Move size={22} /></div><span className="text-[11px] font-bold text-slate-600">Edit Road</span></button>
+                    <button onClick={toggleRemove} className="flex flex-col items-center gap-1.5 cursor-pointer group"><div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-rose-500 shadow-sm border border-slate-200 group-hover:border-rose-400 transition-all"><Ban size={22} /></div><span className="text-[11px] font-bold text-slate-600">Delete</span></button>
+                </div>
+                <div className="flex justify-center"><Toggle enabled={roadToggle} setEnabled={setRoadToggle} /></div>
+                </div>
+            )}
+
+            {(!currentUser || currentUser?.role === 'super_admin' || currentUser?.can_edit_border) && (
+                <div className="bg-white/90 backdrop-blur-xl border border-white shadow-lg rounded-3xl p-5">
+                <h3 className="text-center font-black text-slate-700 text-sm border-b-2 border-indigo-500/20 pb-3 mb-4">🌐 ព្រំដែន (Border)</h3>
+                <div className="flex justify-between mb-5">
+                    <button onClick={drawBorder} className="flex flex-col items-center gap-1 cursor-pointer text-indigo-600 hover:scale-110"><Hexagon size={20} /><span className="text-[10px] font-bold text-slate-600">Add</span></button>
+                    <button onClick={toggleEdit} className="flex flex-col items-center gap-1 cursor-pointer text-amber-500 hover:scale-110"><MapPin size={20} /><span className="text-[10px] font-bold text-slate-600">Edite</span></button>
+                    <button onClick={toggleCut} className="flex flex-col items-center gap-1 cursor-pointer text-sky-500 hover:scale-110"><Scissors size={20} /><span className="text-[10px] font-bold text-slate-600">Cut</span></button>
+                    <button onClick={toggleRemove} className="flex flex-col items-center gap-1 cursor-pointer text-rose-500 hover:scale-110"><Eraser size={20} /><span className="text-[10px] font-bold text-slate-600">Remove</span></button>
+                    <button onClick={toggleRotate} className="flex flex-col items-center gap-1 cursor-pointer text-emerald-500 hover:scale-110"><RotateCw size={20} /><span className="text-[10px] font-bold text-slate-600">Rotate</span></button>
+                </div>
+                <div className="flex flex-col gap-3">
+                    <div className="flex justify-between items-center"><span className="text-[11px] font-bold text-slate-600 flex items-center gap-2"><Spline className="text-purple-500" size={16} /> ព្រំដែនគូសផ្ទាល់</span><Toggle enabled={borderLive} setEnabled={setBorderLive} /></div>
+                </div>
+                </div>
+            )}
+
+            </div>
+            <main className="flex-1 relative z-0 h-full bg-slate-100">
+            <div ref={mapRef} className="w-full h-full" />
+            </main>
+        </div>
+
+        {selectedHome && activeView === 'map' && (
+            <div className="absolute top-[80px] right-0 sm:right-4 left-0 sm:left-auto mx-auto sm:mx-0 z-[9999] w-[calc(100vw-32px)] sm:w-[380px] bg-white rounded-3xl shadow-2xl flex flex-col overflow-hidden max-h-[calc(100vh-100px)] border border-slate-200">
+            <div className="bg-white p-4 border-b border-slate-100 flex justify-between items-center">
+                <h3 className="font-black text-indigo-900 text-sm flex items-center gap-2"><User className="text-indigo-600" size={18} /> ព័ត៌មានអតិថិជន</h3>
+                <button onClick={() => setSelectedHome(null)} className="text-slate-400 hover:text-rose-500 cursor-pointer"><X size={20} /></button>
+            </div>
+            <div className="p-5 flex flex-col gap-4 overflow-y-auto hide-scrollbar bg-white pb-10">
+                <div className="flex flex-col gap-1"><span className="text-[11px] text-slate-700 font-bold flex items-center gap-1"><Camera size={14} /> រូបថត៖</span><div className="w-full h-32 bg-slate-100 rounded-lg overflow-hidden border border-slate-200 flex items-center justify-center">{editForm.photo_url ? ( <img src={editForm.photo_url} className="w-full h-full object-cover" alt="Customer" /> ) : ( <span className="text-slate-400 text-xs font-bold">គ្មានរូបថត</span> )}</div></div>
+                <div className="flex flex-col gap-1.5"><span className="text-[11px] text-slate-700 font-bold">លេខកូដផ្ទះ៖</span><input type="text" value={editForm.custom_id} onChange={(e) => setEditForm({...editForm, custom_id: e.target.value})} className="w-full px-3 py-2.5 text-sm font-bold text-slate-800 bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-500 transition-colors" /></div>
+                <div className="flex flex-col gap-1.5"><span className="text-[11px] text-slate-700 font-bold">ឈ្មោះអតិថិជន (ម្ចាស់ហាង/សំអាង)៖</span><input type="text" value={editForm.customer_name} onChange={(e) => setEditForm({...editForm, customer_name: e.target.value})} className="w-full px-3 py-2.5 text-sm font-bold text-slate-800 bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-500 transition-colors" /></div>
+                
+                <div className="flex flex-col gap-1.5"><span className="text-[11px] text-slate-700 font-bold">តម្លៃសេវា (៛)៖</span>
+                <input 
+                    type="text" 
+                    value={editForm.monthly_fee === '' ? '' : Number(editForm.monthly_fee).toLocaleString()} 
+                    onChange={(e) => {
+                    const rawValue = e.target.value.replace(/,/g, '').replace(/\D/g, ''); 
+                    setEditForm({...editForm, monthly_fee: rawValue === '' ? '' : Number(rawValue)});
+                    }} 
+                    className="w-full px-3 py-2.5 text-sm font-black text-emerald-600 bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-500 transition-colors" 
+                />
+                </div>
+
+                <div className="flex flex-col gap-1.5"><span className="text-[11px] text-slate-700 font-bold">តំបន់ (Zone)៖</span><input type="text" value={editForm.zone} onChange={(e) => setEditForm({...editForm, zone: e.target.value})} className="w-full px-3 py-2.5 text-sm font-bold text-slate-800 bg-slate-50 border border-slate-200 rounded-lg outline-none" disabled={currentUser?.role !== 'super_admin'} /></div>
+                {editForm.status_color === 'blue' ? ( <div className="w-full mt-2 p-3 rounded-xl font-bold bg-emerald-50 text-emerald-700 text-[13px] border border-emerald-100 flex items-center justify-center gap-2 shadow-sm"><CheckCircle size={16} /> បានបង់រួចរាល់ (ខែបន្ទាប់៖ {editForm.payment_month})</div> ) : ( <div className="w-full mt-2 p-3 rounded-xl bg-amber-50 text-amber-800 text-sm border border-amber-100 shadow-sm flex flex-col items-center"><div className="font-bold flex items-center gap-2 mb-1 text-[12px]"><Clock size={14} /> ស្ថានភាពបច្ចុប្បន្ន</div><div className="font-black text-amber-700 text-[13px]">{editForm.payment_month} (មិនទាន់បានបង់)</div></div> )}
+                
+                {editForm.status_color !== 'blue' && ( <div className="mt-2 p-4 rounded-xl border border-indigo-100 bg-indigo-50 shadow-sm"><label className="block text-[11px] font-black text-indigo-900 mb-2">បង់ប្រាក់ (រើសខែ និងចំនួនខែ)៖</label><select value={payMonth} onChange={(e) => setPayMonth(e.target.value)} className="w-full mb-3 border border-indigo-200 px-3 py-2 rounded-lg font-bold text-slate-700 bg-white outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer">{monthsList.map(m => <option key={m} value={m}>បង់ចាប់ពី៖ {m}</option>)}</select><div className="flex items-center gap-3">
+                <input type="number" value={payNumMonths} onChange={(e) => setPayNumMonths(e.target.value === '' ? '' : parseInt(e.target.value))} min="1" max="12" className="w-20 border border-indigo-200 px-3 py-2.5 rounded-lg font-bold text-lg text-center outline-none focus:ring-2 focus:ring-amber-400 bg-white shadow-inner" />
+                <button onClick={handleQuickPay} className="flex-1 bg-amber-500 text-white font-bold py-3 rounded-lg hover:bg-amber-600 transition-colors shadow-md flex justify-center items-center gap-2 text-[13px] cursor-pointer"><DollarSign size={16} /> បង់ប្រាក់</button></div></div> )}
+                
+                <div className="mt-2 border border-slate-200 rounded-xl bg-slate-50 shadow-sm">
+                <div onClick={() => setIsManualEditOpen(!isManualEditOpen)} className="p-3 font-bold text-slate-700 text-[12px] cursor-pointer hover:bg-slate-200 flex items-center justify-center gap-2 transition-colors rounded-xl"><Sliders className="text-indigo-500" size={16} /> ជម្រើសកែប្រែដោយដៃ (Manual Edit)</div>
+                {isManualEditOpen && (
+                    <div className="p-4 border-t border-slate-200 space-y-3 bg-white rounded-b-xl">
+                    <div><label className="block text-xs font-bold mb-1 text-slate-500">ខែត្រូវបង់បន្ទាប់៖</label><select value={editForm.payment_month} onChange={e => setEditForm({...editForm, payment_month: e.target.value})} className="w-full border px-3 py-2 rounded-lg font-bold text-indigo-700 bg-slate-50 outline-none cursor-pointer">{monthsList.map(m => <option key={m} value={m}>{m}</option>)}</select></div>
+                    <div><label className="block text-xs font-bold mb-1 text-slate-500">ស្ថានភាពបង់ប្រាក់៖</label><select value={editForm.status_color} onChange={e => setEditForm({...editForm, status_color: e.target.value})} className="w-full border px-3 py-2 rounded-lg bg-slate-50 font-bold outline-none cursor-pointer"><option value="blue">🔵 បានបង់</option><option value="yellow">🟡 មិនទាន់បានបង់</option><option value="red">🔴 ទីតាំងបិទ</option><option value="black">⚫ បានបង់តែទុកសិន</option></select></div>
+                    </div>
+                )}
+                </div>
+                <button onClick={handleOpenHistory} className="w-full mt-1 py-3 rounded-xl font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition-colors shadow-sm flex justify-center items-center gap-2 text-[12px] cursor-pointer"><History size={16} /> មើលប្រវត្តិបង់ប្រាក់</button>
+            </div>
+            
+            <div className="p-4 bg-white border-t border-slate-100 flex gap-2">
+                <button onClick={handleUpdate} className="flex-1 bg-[#5252d6] text-white font-bold py-3 rounded-xl hover:bg-indigo-700 flex justify-center items-center gap-2 cursor-pointer shadow-md text-[13px] transition-colors"><Save size={16} /> រក្សាទុក</button>
+                <button onClick={() => window.print()} className="flex-1 bg-[#0ea5e9] text-white font-bold py-3 rounded-xl hover:bg-sky-500 flex justify-center items-center gap-2 cursor-pointer shadow-md text-[13px] transition-colors"><Printer size={16} /> បោះពុម្ព</button>
+            </div>
+            </div>
         )}
 
-        <div className={`absolute top-[80px] left-4 z-[1050] w-[calc(100vw-32px)] sm:w-[340px] flex flex-col gap-4 transition-all duration-300 transform ${isToolsPanelOpen ? 'translate-x-0 opacity-100 pointer-events-auto' : '-translate-x-[400px] opacity-0 pointer-events-none'} hide-scrollbar overflow-y-auto max-h-[calc(100vh-100px)] pb-6`}>
-          <div className="bg-white/90 backdrop-blur-xl border border-white shadow-lg rounded-2xl p-3 flex items-center gap-2">
-            <input type="text" placeholder="ស្វែងរកលេខកូដ (KPC...)" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} className="flex-1 w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 outline-none text-sm font-bold text-slate-700 focus:border-indigo-500" />
-            <button onClick={handleSearch} className="bg-indigo-600 text-white p-2.5 rounded-xl hover:bg-indigo-700 cursor-pointer shadow-md"><Search size={20} /></button>
-            <button onClick={() => setIsToolsPanelOpen(false)} className="bg-rose-50 text-rose-600 p-2.5 rounded-xl hover:bg-rose-100 cursor-pointer border border-rose-200 shadow-sm" title="បិទផ្ទាំង"><X size={20} /></button>
-          </div>
-
-          <div className="bg-white/90 backdrop-blur-xl border border-white shadow-lg rounded-3xl p-5">
-            <h3 className="text-center font-black text-slate-700 text-sm border-b-2 border-indigo-500/20 pb-3 mb-4">📍 ចំណុចផ្ទះ (Point)</h3>
-            <div className="flex justify-around mb-4">
-              <button onClick={drawPoint} className="flex flex-col items-center gap-1.5 cursor-pointer group"><div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-indigo-600 shadow-sm border border-slate-200 group-hover:border-indigo-400 transition-all"><MapPin size={22} /></div><span className="text-[11px] font-bold text-slate-600">Add Point</span></button>
-              <button onClick={toggleRemove} className="flex flex-col items-center gap-1.5 cursor-pointer group"><div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-rose-500 shadow-sm border border-slate-200 group-hover:border-rose-400 transition-all"><Eraser size={22} /></div><span className="text-[11px] font-bold text-slate-600">Delete Point</span></button>
+        {currentUser && !deviceChoice && !showLoginModal && (
+            <div className="absolute inset-0 z-[10000] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
+            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-8 transform transition-all text-center">
+                <div className="w-20 h-20 mx-auto bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center mb-5"><MapIcon size={40} /></div>
+                <h2 className="text-2xl font-black text-slate-800 mb-2">សូមស្វាគមន៍មកកាន់ Maps Ark</h2>
+                <p className="text-sm text-slate-500 mb-8 font-medium">តើអ្នកកំពុងប្រើប្រាស់ឧបករណ៍អ្វីសម្រាប់ការងារថ្ងៃនេះ?</p>
+                <div className="grid grid-cols-2 gap-4">
+                <button onClick={() => setDeviceChoice('pc')} className="flex flex-col items-center justify-center p-6 border-2 border-slate-200 rounded-2xl hover:border-indigo-500 hover:bg-indigo-50 transition-all cursor-pointer group">
+                    <Monitor className="text-slate-400 group-hover:text-indigo-600 mb-3 transition-colors" size={48} />
+                    <span className="font-bold text-slate-700 group-hover:text-indigo-700">Option 1: ប្រើ PC</span>
+                    <span className="text-[10px] text-slate-400 mt-1">(ផែនទីធម្មតា)</span>
+                </button>
+                <button onClick={() => setDeviceChoice('mobile')} className="flex flex-col items-center justify-center p-6 border-2 border-slate-200 rounded-2xl hover:border-blue-500 hover:bg-blue-50 transition-all cursor-pointer group">
+                    <Smartphone className="text-slate-400 group-hover:text-blue-600 mb-3 transition-colors" size={48} />
+                    <span className="font-bold text-slate-700 group-hover:text-blue-700">Option 2: ប្រើ Mobile</span>
+                    <span className="text-[10px] text-slate-400 mt-1">(បើក Live Location 📍)</span>
+                </button>
+                </div>
             </div>
-            <div className="flex justify-center"><Toggle enabled={pointToggle} setEnabled={setPointToggle} /></div>
-          </div>
-
-          {(!currentUser || currentUser?.role === 'super_admin' || currentUser?.can_edit_roof) && (
-            <div className="bg-white/90 backdrop-blur-xl border border-white shadow-lg rounded-3xl p-5">
-              <h3 className="text-center font-black text-slate-700 text-sm border-b-2 border-indigo-500/20 pb-3 mb-4">🛑 ដំបូល (Polygon)</h3>
-              <div className="flex justify-between mb-4">
-                <button onClick={drawPolygon} className="flex flex-col items-center gap-1 cursor-pointer text-indigo-600 hover:scale-110"><Hexagon size={20} /><span className="text-[10px] font-bold text-slate-600">Add</span></button>
-                <button onClick={toggleEdit} className="flex flex-col items-center gap-1 cursor-pointer text-amber-500 hover:scale-110"><MapPin size={20} /><span className="text-[10px] font-bold text-slate-600">Edit</span></button>
-                <button onClick={toggleCut} className="flex flex-col items-center gap-1 cursor-pointer text-sky-500 hover:scale-110"><Scissors size={20} /><span className="text-[10px] font-bold text-slate-600">Cut</span></button>
-                <button onClick={toggleRemove} className="flex flex-col items-center gap-1 cursor-pointer text-rose-500 hover:scale-110"><Eraser size={20} /><span className="text-[10px] font-bold text-slate-600">Remove</span></button>
-                <button onClick={toggleRotate} className="flex flex-col items-center gap-1 cursor-pointer text-emerald-500 hover:scale-110"><RotateCw size={20} /><span className="text-[10px] font-bold text-slate-600">Rotate</span></button>
-              </div>
-              <div className="flex justify-center"><Toggle enabled={polygonToggle} setEnabled={setPolygonToggle} /></div>
             </div>
-          )}
+        )}
 
-          {(!currentUser || currentUser?.role === 'super_admin' || currentUser?.can_edit_road) && (
-            <div className="bg-white/90 backdrop-blur-xl border border-white shadow-lg rounded-3xl p-5">
-              <h3 className="text-center font-black text-slate-700 text-sm border-b-2 border-indigo-500/20 pb-3 mb-4">🛣️ ផ្លូវ (Road)</h3>
-              <div className="flex justify-around mb-4">
-                <button onClick={drawRoad} className="flex flex-col items-center gap-1.5 cursor-pointer group"><div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-indigo-600 shadow-sm border border-slate-200 group-hover:border-indigo-400 transition-all"><Slash size={22} /></div><span className="text-[11px] font-bold text-slate-600">Add Road</span></button>
-                <button onClick={toggleEdit} className="flex flex-col items-center gap-1.5 cursor-pointer group"><div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-amber-500 shadow-sm border border-slate-200 group-hover:border-amber-400 transition-all"><Move size={22} /></div><span className="text-[11px] font-bold text-slate-600">Edit Road</span></button>
-                <button onClick={toggleRemove} className="flex flex-col items-center gap-1.5 cursor-pointer group"><div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-rose-500 shadow-sm border border-slate-200 group-hover:border-rose-400 transition-all"><Ban size={22} /></div><span className="text-[11px] font-bold text-slate-600">Delete</span></button>
-              </div>
-              <div className="flex justify-center"><Toggle enabled={roadToggle} setEnabled={setRoadToggle} /></div>
+        {showLoginModal && (
+            <div className="absolute inset-0 z-[9999] flex items-center justify-center bg-indigo-900 px-4">
+            <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl p-6 sm:p-8">
+                <div className="text-center mb-6"><img src="/logo/Map Ark.png" alt="Maps Ark Logo" onError={(e) => e.currentTarget.style.display='none'} className="w-20 h-20 sm:w-24 sm:h-24 mx-auto mb-4 object-contain rounded-full shadow-md border-2 border-indigo-100" /><h1 className="text-xl sm:text-2xl font-bold text-slate-800">ចូលប្រើប្រព័ន្ធ</h1></div>
+                <form onSubmit={handleRealLogin} className="space-y-4">
+                <input type="email" placeholder="Email" required className="w-full px-4 py-3 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-slate-700 text-sm" />
+                <input type="password" placeholder="Password" required className="w-full px-4 py-3 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-slate-700 text-sm" />
+                <button type="submit" className="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl hover:bg-indigo-700 transition-colors shadow-md cursor-pointer text-sm">ចូល</button>
+                </form>
             </div>
-          )}
+            </div>
+        )}
 
-          {(!currentUser || currentUser?.role === 'super_admin' || currentUser?.can_edit_border) && (
-            <div className="bg-white/90 backdrop-blur-xl border border-white shadow-lg rounded-3xl p-5">
-              <h3 className="text-center font-black text-slate-700 text-sm border-b-2 border-indigo-500/20 pb-3 mb-4">🌐 ព្រំដែន (Border)</h3>
-              <div className="flex justify-between mb-5">
-                <button onClick={drawBorder} className="flex flex-col items-center gap-1 cursor-pointer text-indigo-600 hover:scale-110"><Hexagon size={20} /><span className="text-[10px] font-bold text-slate-600">Add</span></button>
-                <button onClick={toggleEdit} className="flex flex-col items-center gap-1 cursor-pointer text-amber-500 hover:scale-110"><MapPin size={20} /><span className="text-[10px] font-bold text-slate-600">Edite</span></button>
-                <button onClick={toggleCut} className="flex flex-col items-center gap-1 cursor-pointer text-sky-500 hover:scale-110"><Scissors size={20} /><span className="text-[10px] font-bold text-slate-600">Cut</span></button>
-                <button onClick={toggleRemove} className="flex flex-col items-center gap-1 cursor-pointer text-rose-500 hover:scale-110"><Eraser size={20} /><span className="text-[10px] font-bold text-slate-600">Remove</span></button>
-                <button onClick={toggleRotate} className="flex flex-col items-center gap-1 cursor-pointer text-emerald-500 hover:scale-110"><RotateCw size={20} /><span className="text-[10px] font-bold text-slate-600">Rotate</span></button>
-              </div>
-              <div className="flex flex-col gap-3">
-                <div className="flex justify-between items-center"><span className="text-[11px] font-bold text-slate-600 flex items-center gap-2"><Spline size={16} className="text-purple-500"/> ព្រំដែនគូសផ្ទាល់</span><Toggle enabled={borderLive} setEnabled={setBorderLive} /></div>
+        {activeView === 'report' && (
+            <div className="flex-1 w-full h-full overflow-y-auto bg-slate-50 pt-[80px] sm:pt-[100px] p-4 sm:p-6 lg:p-10 relative z-10">
+            <div className="max-w-6xl mx-auto space-y-4 sm:space-y-6">
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-100">
+                <div><h2 className="text-xl sm:text-2xl font-bold text-slate-800">របាយការណ៍ទូទៅ</h2><p className="text-xs sm:text-sm text-slate-500 mt-1">ទិន្នន័យស្ថិតិ និងការគ្រប់គ្រង</p></div>
+                <div className="flex gap-2 flex-wrap items-center w-full md:w-auto">
+                    {currentUser?.role === 'super_admin' && (
+                    <select value={reportZone} onChange={e => setReportZone(e.target.value)} className="px-3 py-2 border rounded-lg text-xs sm:text-sm bg-indigo-50 font-bold text-indigo-700 outline-none shadow-sm border-indigo-200 cursor-pointer flex-1 md:flex-none">
+                        <option value="">🗺️ គ្រប់តំបន់ទាំងអស់</option>
+                        {uniqueZones.map(z => <option key={z} value={z}>{z}</option>)}
+                    </select>
+                    )}
+                    {['admin', 'super_admin'].includes(currentUser?.role || '') && (
+                    <>
+                        <select onChange={handleGlobalMonthChange} defaultValue="" className="px-3 py-2 border rounded-lg text-xs sm:text-sm bg-slate-50 font-bold text-slate-700 outline-none cursor-pointer flex-1 md:flex-none">
+                        <option value="" disabled>⚙️ ប្តូរខែរួម</option>
+                        {monthsList.map(m => <option key={m} value={m}>{m}</option>)}
+                        </select>
+                        <select onChange={handleGlobalStatusChange} defaultValue="" className="px-3 py-2 border rounded-lg text-xs sm:text-sm bg-slate-50 font-bold text-slate-700 outline-none cursor-pointer flex-1 md:flex-none">
+                        <option value="" disabled>⚙️ ប្តូរស្ថានភាពរួម</option>
+                        <option value="blue">🔵 បានបង់</option>
+                        <option value="yellow">🟡 មិនទាន់បង់</option>
+                        <option value="red">🔴 បិទ</option>
+                        <option value="black">⚫ បង់តែទុកសិន</option>
+                        </select>
+                    </>
+                    )}
+                    <button onClick={handleExportCSV} className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-2 rounded-lg text-xs sm:text-sm font-bold hover:bg-emerald-100 shadow-sm flex items-center justify-center cursor-pointer flex-1 md:flex-none w-full md:w-auto"><Download className="mr-1" size={16} /> ទាញយក CSV</button>
+                </div>
+                </div>
+
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between"><div className="flex justify-between items-start mb-2"><span className="text-xs sm:text-sm font-bold text-slate-500">ផ្ទះសរុប</span><div className="p-1.5 sm:p-2 bg-indigo-50 rounded-lg text-indigo-500"><Home className="sm:w-5 sm:h-5" size={18} /></div></div><div className="text-2xl sm:text-3xl font-black text-slate-800">{totalHouses}</div></div>
+                <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between"><div className="flex justify-between items-start mb-2"><span className="text-xs sm:text-sm font-bold text-slate-500">បានបង់</span><div className="p-1.5 sm:p-2 bg-emerald-50 rounded-lg text-emerald-500"><CheckCircle className="sm:w-5 sm:h-5" size={18} /></div></div><div className="text-2xl sm:text-3xl font-black text-emerald-600">{paidHouses}</div></div>
+                <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between"><div className="flex justify-between items-start mb-2"><span className="text-xs sm:text-sm font-bold text-slate-500">រង់ចាំបង់</span><div className="p-1.5 sm:p-2 bg-amber-50 rounded-lg text-amber-500"><Clock className="sm:w-5 sm:h-5" size={18} /></div></div><div className="text-2xl sm:text-3xl font-black text-amber-500">{pendingHouses}</div></div>
+                <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between"><div className="flex justify-between items-start mb-2"><span className="text-xs sm:text-sm font-bold text-slate-500">បិទ</span><div className="p-1.5 sm:p-2 bg-rose-50 rounded-lg text-rose-500"><XCircle className="sm:w-5 sm:h-5" size={18} /></div></div><div className="text-2xl sm:text-3xl font-black text-rose-600">{closedHouses}</div></div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+                <div className="bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-100"><div className="flex justify-between items-center mb-3 sm:mb-4"><h3 className="font-bold text-slate-800 text-sm sm:text-base">ចំណូលប្រចាំខែនេះ</h3><div className="p-1.5 sm:p-2 bg-emerald-50 rounded-lg text-emerald-500"><Wallet className="sm:w-6 sm:h-6" size={20} /></div></div><div className="text-2xl sm:text-4xl font-black text-emerald-600">{monthlyRevenue.toLocaleString()} ៛</div></div>
+                <div className="bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-100 border-l-4 border-l-indigo-500"><div className="flex justify-between items-center mb-3 sm:mb-4"><h3 className="font-bold text-slate-800 text-sm sm:text-base">ចំណូលប្រចាំថ្ងៃនេះ (Today)</h3><div className="p-1.5 sm:p-2 bg-indigo-50 rounded-lg text-indigo-500"><CalendarDays className="sm:w-6 sm:h-6" size={20} /></div></div><div className="text-2xl sm:text-4xl font-black text-indigo-600">{dailyRevenue.toLocaleString()} ៛</div></div>
+                </div>
+
+                <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                <div className="px-4 sm:px-6 py-4 sm:py-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                    <h3 className="font-bold text-slate-800 flex items-center text-sm sm:text-base"><List className="mr-2 text-indigo-500" size={18} />បញ្ជីឈ្មោះអតិថិជន</h3>
+                    <div className="flex items-center gap-2">
+                    <span className="text-[10px] sm:text-xs text-slate-500 font-bold hidden sm:inline">បង្ហាញ៖</span>
+                    <select value={itemsPerPage} onChange={e => {setItemsPerPage(Number(e.target.value)); setCurrentPage(1);}} className="border px-2 py-1 rounded text-xs sm:text-sm outline-none font-bold text-indigo-700 bg-white shadow-sm cursor-pointer">
+                        <option value="10">10 ជួរ</option><option value="50">50 ជួរ</option><option value="100">100 ជួរ</option>
+                    </select>
+                    </div>
+                </div>
+                <div className="overflow-x-auto">
+                    <table className="w-full text-xs sm:text-sm text-left text-slate-600">
+                    <thead className="bg-slate-100/50 text-slate-500 font-bold border-b">
+                        <tr><th className="px-4 sm:px-6 py-3 sm:py-4">លេខកូដ</th><th className="px-4 sm:px-6 py-3 sm:py-4">ឈ្មោះ</th><th className="px-4 sm:px-6 py-3 sm:py-4">តំបន់</th><th className="px-4 sm:px-6 py-3 sm:py-4">ខែត្រូវបង់</th><th className="px-4 sm:px-6 py-3 sm:py-4">ស្ថានភាព</th></tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                        {paginatedHouseholds.length === 0 && <tr><td colSpan={5} className="text-center py-6 font-bold text-slate-400">គ្មានទិន្នន័យទេ</td></tr>}
+                        {paginatedHouseholds.map(h => (
+                        <tr key={h.id} className="hover:bg-slate-50 transition-colors whitespace-nowrap">
+                            <td className="px-4 sm:px-6 py-3 sm:py-4 font-bold text-slate-800">{h.custom_id}</td>
+                            <td className="px-4 sm:px-6 py-3 sm:py-4 font-bold">{h.customer_name || '---'}</td>
+                            <td className="px-4 sm:px-6 py-3 sm:py-4">{h.zone || '---'}</td>
+                            <td className="px-4 sm:px-6 py-3 sm:py-4">{h.payment_month}</td>
+                            <td className="px-4 sm:px-6 py-3 sm:py-4">
+                            {h.status_color === 'blue' ? <span className="px-2 sm:px-3 py-1 bg-emerald-100 text-emerald-700 rounded-lg text-[10px] sm:text-xs font-bold border border-emerald-200">🔵 បានបង់</span> :
+                            h.status_color === 'yellow' ? <span className="px-2 sm:px-3 py-1 bg-amber-100 text-amber-700 rounded-lg text-[10px] sm:text-xs font-bold border border-amber-200">🟡 មិនទាន់បង់</span> :
+                            h.status_color === 'red' ? <span className="px-2 sm:px-3 py-1 bg-rose-100 text-rose-700 rounded-lg text-[10px] sm:text-xs font-bold border border-rose-200">🔴 បិទ</span> :
+                            <span className="px-2 sm:px-3 py-1 bg-slate-200 text-slate-800 rounded-lg text-[10px] sm:text-xs font-bold border border-slate-300">⚫ ទុកសិន</span>}
+                            </td>
+                        </tr>
+                        ))}
+                    </tbody>
+                    </table>
+                </div>
+                <div className="px-4 sm:px-6 py-3 sm:py-4 border-t border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-3 sm:gap-0 bg-slate-50">
+                    <span className="text-[10px] sm:text-xs text-slate-500 font-bold">បង្ហាញ {(currentPage-1)*itemsPerPage + 1} - {Math.min(currentPage*itemsPerPage, totalHouses)} នៃ {totalHouses}</span>
+                    <div className="flex gap-2">
+                    <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="px-3 py-1.5 bg-white border rounded text-slate-600 hover:bg-slate-100 disabled:opacity-50 text-xs sm:text-sm font-bold flex items-center cursor-pointer"><ChevronLeft className="mr-1" size={16} /> ថយក្រោយ</button>
+                    <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage >= totalPages} className="px-3 py-1.5 bg-white border rounded text-slate-600 hover:bg-slate-100 disabled:opacity-50 text-xs sm:text-sm font-bold flex items-center cursor-pointer">ទៅមុខ <ChevronRight className="ml-1" size={16} /></button>
+                    </div>
+                </div>
               </div>
             </div>
-          )}
+            </div>
+        )}
 
-        </div>
-        <main className="flex-1 relative z-0 h-full bg-slate-100">
-          <div ref={mapRef} className="w-full h-full" />
-        </main>
+        {historyModalOpen && (
+            <div className="absolute inset-0 z-[10000] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md h-[80%] max-h-[600px] flex flex-col overflow-hidden">
+                <div className="p-4 border-b border-slate-100 bg-indigo-50 flex justify-between items-center"><h3 className="font-bold text-indigo-800 text-base sm:text-lg flex items-center"><History className="mr-2 text-indigo-600" size={20} />ប្រវត្តិបង់ប្រាក់</h3><button onClick={() => setHistoryModalOpen(false)} className="text-slate-400 hover:text-rose-500 bg-white rounded-full w-8 h-8 flex items-center justify-center shadow-sm border border-slate-200 cursor-pointer"><X size={18} /></button></div>
+                <div className="p-4 overflow-y-auto flex-1 space-y-3 bg-slate-50">
+                {isLoadingHistory ? ( <div className="flex flex-col items-center justify-center h-full text-slate-500 py-10"><Clock className="animate-spin text-indigo-500 mb-3" size={32} /><p className="font-bold">កំពុងទាញយកទិន្នន័យ...</p></div> ) : historyData.length === 0 ? ( <div className="text-center text-slate-500 font-bold py-5 bg-white rounded-xl border border-slate-200 shadow-sm">មិនមានប្រវត្តិបង់ប្រាក់ទេ</div> ) : (
+                    <>
+                    <div className="text-center mb-4 text-xs sm:text-sm font-bold text-slate-600 bg-white py-2 rounded-lg border border-slate-200 shadow-sm">ប្រវត្តិបង់ប្រាក់ចុងក្រោយ</div>
+                    {historyData.map((record) => {
+                        const dateObj = new Date(record.paid_at || record.created_at);
+                        const formattedDate = `${dateObj.getDate().toString().padStart(2, '0')}/${(dateObj.getMonth()+1).toString().padStart(2, '0')}/${dateObj.getFullYear()} - ${dateObj.getHours().toString().padStart(2, '0')}:${dateObj.getMinutes().toString().padStart(2, '0')}`;
+                        const khmerMonthDisplay = monthsList[record.month - 1] || `ខែទី ${record.month}`;
+                        return (
+                        <div key={record.id} className="flex justify-between items-center p-3 sm:p-4 bg-white border-l-4 border-emerald-500 rounded-xl shadow-sm mb-3">
+                            <div><div className="font-bold text-slate-800 text-sm sm:text-base">{khmerMonthDisplay} ឆ្នាំ {record.year}</div><div className="text-[10px] sm:text-xs text-slate-500 font-medium mt-1 flex items-center gap-1"><Clock size={12} /> {formattedDate}</div><div className="text-xs sm:text-sm font-bold text-emerald-600 mt-1">៛ {Number(record.amount || 0).toLocaleString()}</div></div>
+                            <div className="flex items-center gap-2"><div className="text-emerald-600 font-bold bg-emerald-50 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full text-[10px] sm:text-xs border border-emerald-100 flex items-center"><CheckCircle className="mr-1" size={14} /> បានបង់</div><button onClick={() => handleUndoPayment(record.id, khmerMonthDisplay)} className="w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center rounded-full bg-rose-50 text-rose-500 hover:bg-rose-500 hover:text-white border border-rose-200 transition-colors shadow-sm cursor-pointer" title="លុបការបង់ប្រាក់ខែនេះ"><RotateCcw size={14} /></button></div>
+                        </div>
+                        );
+                    })}
+                    </>
+                )}
+                </div>
+            </div>
+            </div>
+        )}
+
+        {roadEditData && (
+            <div className="absolute inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+                <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5 sm:p-6 transform transition-all">
+                    <h3 className="font-bold text-indigo-800 text-base sm:text-lg mb-4 flex items-center"><Road className="mr-2 text-indigo-500" size={20} />{roadEditData.isNew ? "បន្ថែមផ្លូវថ្មី" : "កែប្រែព័ត៌មានផ្លូវ"}</h3>
+                    <label className="block text-[10px] sm:text-xs font-bold text-slate-500 mb-1">ឈ្មោះផ្លូវ (Road Name):</label><input type="text" value={roadEditData.name} onChange={e => setRoadEditData({...roadEditData, name: e.target.value})} className="w-full border border-slate-300 p-2 sm:p-2.5 mb-3 rounded-lg outline-none focus:border-indigo-500 font-bold text-sm" />
+                    <label className="block text-[10px] sm:text-xs font-bold text-slate-500 mb-1">ទំហំផ្លូវ (Width e.g. 5m):</label><input type="text" value={roadEditData.width} onChange={e => setRoadEditData({...roadEditData, width: e.target.value})} className="w-full border border-slate-300 p-2 sm:p-2.5 mb-3 rounded-lg outline-none focus:border-indigo-500 font-bold text-sm" />
+                    <label className="block text-[10px] sm:text-xs font-bold text-slate-500 mb-1">អាសយដ្ឋាន (Address):</label><input type="text" value={roadEditData.address} onChange={e => setRoadEditData({...roadEditData, address: e.target.value})} className="w-full border border-slate-300 p-2 sm:p-2.5 mb-3 rounded-lg outline-none focus:border-indigo-500 font-bold text-sm" />
+                    <label className="block text-[10px] sm:text-xs font-bold text-slate-500 mb-1">ប្រភេទផ្លូវ (Road Type):</label><select value={roadEditData.road_type} onChange={e => setRoadEditData({...roadEditData, road_type: e.target.value})} className="w-full border border-slate-300 p-2 sm:p-2.5 mb-5 rounded-lg outline-none focus:border-indigo-500 font-bold bg-slate-50 text-indigo-700 text-sm"><option value="Land road">Land road (ផ្លូវដី)</option><option value="Concrete road">Concrete road (ផ្លូវបេតុង)</option><option value="Hight Ways road">Hight Ways road (ផ្លូវហាយវេ)</option><option value="Asphalt road">Asphalt road (ផ្លូវកៅស៊ូរ)</option><option value="Nation road">Nation road (ផ្លូវជាតិ)</option></select>
+                    <div className="flex gap-2"><button onClick={saveRoadData} className="bg-indigo-600 hover:bg-indigo-700 text-white flex-1 py-2 sm:py-3 rounded-lg font-bold shadow-md transition-colors cursor-pointer text-sm">រក្សាទុក</button><button onClick={() => setRoadEditData(null)} className="bg-slate-200 hover:bg-slate-300 text-slate-700 flex-1 py-2 sm:py-3 rounded-lg font-bold transition-colors cursor-pointer text-sm">បោះបង់</button></div>
+                </div>
+            </div>
+        )}
       </div>
-
-      {selectedHome && activeView === 'map' && (
-        <div className="absolute top-[80px] right-0 sm:right-4 left-0 sm:left-auto mx-auto sm:mx-0 z-[9999] w-[calc(100vw-32px)] sm:w-[380px] bg-white rounded-3xl shadow-2xl flex flex-col overflow-hidden max-h-[calc(100vh-100px)] border border-slate-200">
-          <div className="bg-white p-4 border-b border-slate-100 flex justify-between items-center">
-            <h3 className="font-black text-indigo-900 text-sm flex items-center gap-2"><User size={18} className="text-indigo-600"/> ព័ត៌មានអតិថិជន</h3>
-            <button onClick={() => setSelectedHome(null)} className="text-slate-400 hover:text-rose-500 cursor-pointer"><X size={20} /></button>
-          </div>
-          <div className="p-5 flex flex-col gap-4 overflow-y-auto hide-scrollbar bg-white pb-10">
-            <div className="flex flex-col gap-1"><span className="text-[11px] text-slate-700 font-bold flex items-center gap-1"><Camera size={14}/> រូបថត៖</span><div className="w-full h-32 bg-slate-100 rounded-lg overflow-hidden border border-slate-200 flex items-center justify-center">{editForm.photo_url ? ( <img src={editForm.photo_url} className="w-full h-full object-cover" alt="Customer" /> ) : ( <span className="text-slate-400 text-xs font-bold">គ្មានរូបថត</span> )}</div></div>
-            <div className="flex flex-col gap-1.5"><span className="text-[11px] text-slate-700 font-bold">លេខកូដផ្ទះ៖</span><input type="text" value={editForm.custom_id} onChange={(e) => setEditForm({...editForm, custom_id: e.target.value})} className="w-full px-3 py-2.5 text-sm font-bold text-slate-800 bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-500 transition-colors" /></div>
-            <div className="flex flex-col gap-1.5"><span className="text-[11px] text-slate-700 font-bold">ឈ្មោះអតិថិជន (ម្ចាស់ហាង/សំអាង)៖</span><input type="text" value={editForm.customer_name} onChange={(e) => setEditForm({...editForm, customer_name: e.target.value})} className="w-full px-3 py-2.5 text-sm font-bold text-slate-800 bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-500 transition-colors" /></div>
-            
-            <div className="flex flex-col gap-1.5"><span className="text-[11px] text-slate-700 font-bold">តម្លៃសេវា (៛)៖</span>
-              <input 
-                type="text" 
-                value={editForm.monthly_fee === '' ? '' : Number(editForm.monthly_fee).toLocaleString()} 
-                onChange={(e) => {
-                  const rawValue = e.target.value.replace(/,/g, '').replace(/\D/g, ''); 
-                  setEditForm({...editForm, monthly_fee: rawValue === '' ? '' : Number(rawValue)});
-                }} 
-                className="w-full px-3 py-2.5 text-sm font-black text-emerald-600 bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-500 transition-colors" 
-              />
-            </div>
-
-            <div className="flex flex-col gap-1.5"><span className="text-[11px] text-slate-700 font-bold">តំបន់ (Zone)៖</span><input type="text" value={editForm.zone} onChange={(e) => setEditForm({...editForm, zone: e.target.value})} className="w-full px-3 py-2.5 text-sm font-bold text-slate-800 bg-slate-50 border border-slate-200 rounded-lg outline-none" disabled={currentUser?.role !== 'super_admin'} /></div>
-            {editForm.status_color === 'blue' ? ( <div className="w-full mt-2 p-3 rounded-xl font-bold bg-emerald-50 text-emerald-700 text-[13px] border border-emerald-100 flex items-center justify-center gap-2 shadow-sm"><CheckCircle size={16} /> បានបង់រួចរាល់ (ខែបន្ទាប់៖ {editForm.payment_month})</div> ) : ( <div className="w-full mt-2 p-3 rounded-xl bg-amber-50 text-amber-800 text-sm border border-amber-100 shadow-sm flex flex-col items-center"><div className="font-bold flex items-center gap-2 mb-1 text-[12px]"><Clock size={14}/> ស្ថានភាពបច្ចុប្បន្ន</div><div className="font-black text-amber-700 text-[13px]">{editForm.payment_month} (មិនទាន់បានបង់)</div></div> )}
-            
-            {editForm.status_color !== 'blue' && ( <div className="mt-2 p-4 rounded-xl border border-indigo-100 bg-indigo-50 shadow-sm"><label className="block text-[11px] font-black text-indigo-900 mb-2">បង់ប្រាក់ (រើសខែ និងចំនួនខែ)៖</label><select value={payMonth} onChange={(e) => setPayMonth(e.target.value)} className="w-full mb-3 border border-indigo-200 px-3 py-2 rounded-lg font-bold text-slate-700 bg-white outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer">{monthsList.map(m => <option key={m} value={m}>បង់ចាប់ពី៖ {m}</option>)}</select><div className="flex items-center gap-3">
-              <input type="number" value={payNumMonths} onChange={(e) => setPayNumMonths(e.target.value === '' ? '' : parseInt(e.target.value))} min="1" max="12" className="w-20 border border-indigo-200 px-3 py-2.5 rounded-lg font-bold text-lg text-center outline-none focus:ring-2 focus:ring-amber-400 bg-white shadow-inner" />
-              <button onClick={handleQuickPay} className="flex-1 bg-amber-500 text-white font-bold py-3 rounded-lg hover:bg-amber-600 transition-colors shadow-md flex justify-center items-center gap-2 text-[13px] cursor-pointer"><DollarSign size={16}/> បង់ប្រាក់</button></div></div> )}
-            
-            <div className="mt-2 border border-slate-200 rounded-xl bg-slate-50 shadow-sm">
-              <div onClick={() => setIsManualEditOpen(!isManualEditOpen)} className="p-3 font-bold text-slate-700 text-[12px] cursor-pointer hover:bg-slate-200 flex items-center justify-center gap-2 transition-colors rounded-xl"><Sliders size={16} className="text-indigo-500"/> ជម្រើសកែប្រែដោយដៃ (Manual Edit)</div>
-              {isManualEditOpen && (
-                <div className="p-4 border-t border-slate-200 space-y-3 bg-white rounded-b-xl">
-                  <div><label className="block text-xs font-bold mb-1 text-slate-500">ខែត្រូវបង់បន្ទាប់៖</label><select value={editForm.payment_month} onChange={e => setEditForm({...editForm, payment_month: e.target.value})} className="w-full border px-3 py-2 rounded-lg font-bold text-indigo-700 bg-slate-50 outline-none cursor-pointer">{monthsList.map(m => <option key={m} value={m}>{m}</option>)}</select></div>
-                  <div><label className="block text-xs font-bold mb-1 text-slate-500">ស្ថានភាពបង់ប្រាក់៖</label><select value={editForm.status_color} onChange={e => setEditForm({...editForm, status_color: e.target.value})} className="w-full border px-3 py-2 rounded-lg bg-slate-50 font-bold outline-none cursor-pointer"><option value="blue">🔵 បានបង់</option><option value="yellow">🟡 មិនទាន់បានបង់</option><option value="red">🔴 ទីតាំងបិទ</option><option value="black">⚫ បានបង់តែទុកសិន</option></select></div>
-                </div>
-              )}
-            </div>
-            <button onClick={handleOpenHistory} className="w-full mt-1 py-3 rounded-xl font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition-colors shadow-sm flex justify-center items-center gap-2 text-[12px] cursor-pointer"><History size={16}/> មើលប្រវត្តិបង់ប្រាក់</button>
-          </div>
-          <div className="p-4 bg-white border-t border-slate-100 flex gap-2"><button onClick={handleUpdate} className="flex-1 bg-[#5252d6] text-white font-bold py-3 rounded-xl hover:bg-indigo-700 flex justify-center items-center gap-2 cursor-pointer shadow-md text-[13px] transition-colors"><Save size={16} /> រក្សាទុក</button><button onClick={() => window.print()} className="flex-1 bg-[#0ea5e9] text-white font-bold py-3 rounded-xl hover:bg-sky-500 flex justify-center items-center gap-2 cursor-pointer shadow-md text-[13px] transition-colors"><Printer size={16} /> បោះពុម្ព</button></div>
-        </div>
-      )}
-
-      {currentUser && !deviceChoice && !showLoginModal && (
-        <div className="absolute inset-0 z-[10000] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-8 transform transition-all text-center">
-            <div className="w-20 h-20 mx-auto bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center mb-5"><MapIcon size={40}/></div>
-            <h2 className="text-2xl font-black text-slate-800 mb-2">សូមស្វាគមន៍មកកាន់ Maps Ark</h2>
-            <p className="text-sm text-slate-500 mb-8 font-medium">តើអ្នកកំពុងប្រើប្រាស់ឧបករណ៍អ្វីសម្រាប់ការងារថ្ងៃនេះ?</p>
-            <div className="grid grid-cols-2 gap-4">
-              <button onClick={() => setDeviceChoice('pc')} className="flex flex-col items-center justify-center p-6 border-2 border-slate-200 rounded-2xl hover:border-indigo-500 hover:bg-indigo-50 transition-all cursor-pointer group">
-                <Monitor size={48} className="text-slate-400 group-hover:text-indigo-600 mb-3 transition-colors" />
-                <span className="font-bold text-slate-700 group-hover:text-indigo-700">Option 1: ប្រើ PC</span>
-                <span className="text-[10px] text-slate-400 mt-1">(ផែនទីធម្មតា)</span>
-              </button>
-              <button onClick={() => setDeviceChoice('mobile')} className="flex flex-col items-center justify-center p-6 border-2 border-slate-200 rounded-2xl hover:border-blue-500 hover:bg-blue-50 transition-all cursor-pointer group">
-                <Smartphone size={48} className="text-slate-400 group-hover:text-blue-600 mb-3 transition-colors" />
-                <span className="font-bold text-slate-700 group-hover:text-blue-700">Option 2: ប្រើ Mobile</span>
-                <span className="text-[10px] text-slate-400 mt-1">(បើក Live Location 📍)</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showLoginModal && (
-        <div className="absolute inset-0 z-[9999] flex items-center justify-center bg-indigo-900 px-4">
-          <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl p-6 sm:p-8">
-            <div className="text-center mb-6"><img src="/logo/Map Ark.png" alt="Maps Ark Logo" onError={(e) => e.currentTarget.style.display='none'} className="w-20 h-20 sm:w-24 sm:h-24 mx-auto mb-4 object-contain rounded-full shadow-md border-2 border-indigo-100" /><h1 className="text-xl sm:text-2xl font-bold text-slate-800">ចូលប្រើប្រព័ន្ធ</h1></div>
-            <form onSubmit={handleRealLogin} className="space-y-4">
-              <input type="email" placeholder="Email" required className="w-full px-4 py-3 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-slate-700 text-sm" />
-              <input type="password" placeholder="Password" required className="w-full px-4 py-3 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-slate-700 text-sm" />
-              <button type="submit" className="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl hover:bg-indigo-700 transition-colors shadow-md cursor-pointer text-sm">ចូល</button>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {activeView === 'report' && (
-        <div className="flex-1 w-full h-full overflow-y-auto bg-slate-50 pt-[80px] sm:pt-[100px] p-4 sm:p-6 lg:p-10 relative z-10">
-          <div className="max-w-6xl mx-auto space-y-4 sm:space-y-6">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-100">
-              <div><h2 className="text-xl sm:text-2xl font-bold text-slate-800">របាយការណ៍ទូទៅ</h2><p className="text-xs sm:text-sm text-slate-500 mt-1">ទិន្នន័យស្ថិតិ និងការគ្រប់គ្រង</p></div>
-              <div className="flex gap-2 flex-wrap items-center w-full md:w-auto">
-                {currentUser?.role === 'super_admin' && (
-                  <select value={reportZone} onChange={e => setReportZone(e.target.value)} className="px-3 py-2 border rounded-lg text-xs sm:text-sm bg-indigo-50 font-bold text-indigo-700 outline-none shadow-sm border-indigo-200 cursor-pointer flex-1 md:flex-none">
-                    <option value="">🗺️ គ្រប់តំបន់ទាំងអស់</option>
-                    {uniqueZones.map(z => <option key={z} value={z}>{z}</option>)}
-                  </select>
-                )}
-                {['admin', 'super_admin'].includes(currentUser?.role || '') && (
-                  <>
-                    <select onChange={handleGlobalMonthChange} defaultValue="" className="px-3 py-2 border rounded-lg text-xs sm:text-sm bg-slate-50 font-bold text-slate-700 outline-none cursor-pointer flex-1 md:flex-none">
-                      <option value="" disabled>⚙️ ប្តូរខែរួម</option>
-                      {monthsList.map(m => <option key={m} value={m}>{m}</option>)}
-                    </select>
-                    <select onChange={handleGlobalStatusChange} defaultValue="" className="px-3 py-2 border rounded-lg text-xs sm:text-sm bg-slate-50 font-bold text-slate-700 outline-none cursor-pointer flex-1 md:flex-none">
-                      <option value="" disabled>⚙️ ប្តូរស្ថានភាពរួម</option>
-                      <option value="blue">🔵 បានបង់</option>
-                      <option value="yellow">🟡 មិនទាន់បង់</option>
-                      <option value="red">🔴 បិទ</option>
-                      <option value="black">⚫ បង់តែទុកសិន</option>
-                    </select>
-                  </>
-                )}
-                <button onClick={handleExportCSV} className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-2 rounded-lg text-xs sm:text-sm font-bold hover:bg-emerald-100 shadow-sm flex items-center justify-center cursor-pointer flex-1 md:flex-none w-full md:w-auto"><Download size={16} className="mr-1" /> ទាញយក CSV</button>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-              <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between"><div className="flex justify-between items-start mb-2"><span className="text-xs sm:text-sm font-bold text-slate-500">ផ្ទះសរុប</span><div className="p-1.5 sm:p-2 bg-indigo-50 rounded-lg text-indigo-500"><Home size={18} className="sm:w-5 sm:h-5"/></div></div><div className="text-2xl sm:text-3xl font-black text-slate-800">{totalHouses}</div></div>
-              <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between"><div className="flex justify-between items-start mb-2"><span className="text-xs sm:text-sm font-bold text-slate-500">បានបង់</span><div className="p-1.5 sm:p-2 bg-emerald-50 rounded-lg text-emerald-500"><CheckCircle size={18} className="sm:w-5 sm:h-5"/></div></div><div className="text-2xl sm:text-3xl font-black text-emerald-600">{paidHouses}</div></div>
-              <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between"><div className="flex justify-between items-start mb-2"><span className="text-xs sm:text-sm font-bold text-slate-500">រង់ចាំបង់</span><div className="p-1.5 sm:p-2 bg-amber-50 rounded-lg text-amber-500"><Clock size={18} className="sm:w-5 sm:h-5"/></div></div><div className="text-2xl sm:text-3xl font-black text-amber-500">{pendingHouses}</div></div>
-              <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between"><div className="flex justify-between items-start mb-2"><span className="text-xs sm:text-sm font-bold text-slate-500">បិទ</span><div className="p-1.5 sm:p-2 bg-rose-50 rounded-lg text-rose-500"><XCircle size={18} className="sm:w-5 sm:h-5"/></div></div><div className="text-2xl sm:text-3xl font-black text-rose-600">{closedHouses}</div></div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
-              <div className="bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-100"><div className="flex justify-between items-center mb-3 sm:mb-4"><h3 className="font-bold text-slate-800 text-sm sm:text-base">ចំណូលប្រចាំខែនេះ</h3><div className="p-1.5 sm:p-2 bg-emerald-50 rounded-lg text-emerald-500"><Wallet size={20} className="sm:w-6 sm:h-6"/></div></div><div className="text-2xl sm:text-4xl font-black text-emerald-600">{monthlyRevenue.toLocaleString()} ៛</div></div>
-              <div className="bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-100 border-l-4 border-l-indigo-500"><div className="flex justify-between items-center mb-3 sm:mb-4"><h3 className="font-bold text-slate-800 text-sm sm:text-base">ចំណូលប្រចាំថ្ងៃនេះ (Today)</h3><div className="p-1.5 sm:p-2 bg-indigo-50 rounded-lg text-indigo-500"><CalendarDays size={20} className="sm:w-6 sm:h-6"/></div></div><div className="text-2xl sm:text-4xl font-black text-indigo-600">{dailyRevenue.toLocaleString()} ៛</div></div>
-            </div>
-
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-              <div className="px-4 sm:px-6 py-4 sm:py-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                <h3 className="font-bold text-slate-800 flex items-center text-sm sm:text-base"><List size={18} className="mr-2 text-indigo-500"/>បញ្ជីឈ្មោះអតិថិជន</h3>
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] sm:text-xs text-slate-500 font-bold hidden sm:inline">បង្ហាញ៖</span>
-                  <select value={itemsPerPage} onChange={e => {setItemsPerPage(Number(e.target.value)); setCurrentPage(1);}} className="border px-2 py-1 rounded text-xs sm:text-sm outline-none font-bold text-indigo-700 bg-white shadow-sm cursor-pointer">
-                    <option value="10">10 ជួរ</option><option value="50">50 ជួរ</option><option value="100">100 ជួរ</option>
-                  </select>
-                </div>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs sm:text-sm text-left text-slate-600">
-                  <thead className="bg-slate-100/50 text-slate-500 font-bold border-b">
-                    <tr><th className="px-4 sm:px-6 py-3 sm:py-4">លេខកូដ</th><th className="px-4 sm:px-6 py-3 sm:py-4">ឈ្មោះ</th><th className="px-4 sm:px-6 py-3 sm:py-4">តំបន់</th><th className="px-4 sm:px-6 py-3 sm:py-4">ខែត្រូវបង់</th><th className="px-4 sm:px-6 py-3 sm:py-4">ស្ថានភាព</th></tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {paginatedHouseholds.length === 0 && <tr><td colSpan={5} className="text-center py-6 font-bold text-slate-400">គ្មានទិន្នន័យទេ</td></tr>}
-                    {paginatedHouseholds.map(h => (
-                      <tr key={h.id} className="hover:bg-slate-50 transition-colors whitespace-nowrap">
-                        <td className="px-4 sm:px-6 py-3 sm:py-4 font-bold text-slate-800">{h.custom_id}</td>
-                        <td className="px-4 sm:px-6 py-3 sm:py-4 font-bold">{h.customer_name || '---'}</td>
-                        <td className="px-4 sm:px-6 py-3 sm:py-4">{h.zone || '---'}</td>
-                        <td className="px-4 sm:px-6 py-3 sm:py-4">{h.payment_month}</td>
-                        <td className="px-4 sm:px-6 py-3 sm:py-4">
-                          {h.status_color === 'blue' ? <span className="px-2 sm:px-3 py-1 bg-emerald-100 text-emerald-700 rounded-lg text-[10px] sm:text-xs font-bold border border-emerald-200">🔵 បានបង់</span> :
-                           h.status_color === 'yellow' ? <span className="px-2 sm:px-3 py-1 bg-amber-100 text-amber-700 rounded-lg text-[10px] sm:text-xs font-bold border border-amber-200">🟡 មិនទាន់បង់</span> :
-                           h.status_color === 'red' ? <span className="px-2 sm:px-3 py-1 bg-rose-100 text-rose-700 rounded-lg text-[10px] sm:text-xs font-bold border border-rose-200">🔴 បិទ</span> :
-                           <span className="px-2 sm:px-3 py-1 bg-slate-200 text-slate-800 rounded-lg text-[10px] sm:text-xs font-bold border border-slate-300">⚫ ទុកសិន</span>}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <div className="px-4 sm:px-6 py-3 sm:py-4 border-t border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-3 sm:gap-0 bg-slate-50">
-                <span className="text-[10px] sm:text-xs text-slate-500 font-bold">បង្ហាញ {(currentPage-1)*itemsPerPage + 1} - {Math.min(currentPage*itemsPerPage, totalHouses)} នៃ {totalHouses}</span>
-                <div className="flex gap-2">
-                  <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="px-3 py-1.5 bg-white border rounded text-slate-600 hover:bg-slate-100 disabled:opacity-50 text-xs sm:text-sm font-bold flex items-center cursor-pointer"><ChevronLeft size={16} className="mr-1"/> ថយក្រោយ</button>
-                  <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage >= totalPages} className="px-3 py-1.5 bg-white border rounded text-slate-600 hover:bg-slate-100 disabled:opacity-50 text-xs sm:text-sm font-bold flex items-center cursor-pointer">ទៅមុខ <ChevronRight size={16} className="ml-1"/></button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {historyModalOpen && (
-        <div className="absolute inset-0 z-[10000] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md h-[80%] max-h-[600px] flex flex-col overflow-hidden">
-            <div className="p-4 border-b border-slate-100 bg-indigo-50 flex justify-between items-center"><h3 className="font-bold text-indigo-800 text-base sm:text-lg flex items-center"><History className="mr-2 text-indigo-600" size={20}/>ប្រវត្តិបង់ប្រាក់</h3><button onClick={() => setHistoryModalOpen(false)} className="text-slate-400 hover:text-rose-500 bg-white rounded-full w-8 h-8 flex items-center justify-center shadow-sm border border-slate-200 cursor-pointer"><X size={18}/></button></div>
-            <div className="p-4 overflow-y-auto flex-1 space-y-3 bg-slate-50">
-              {isLoadingHistory ? ( <div className="flex flex-col items-center justify-center h-full text-slate-500 py-10"><Clock className="animate-spin text-indigo-500 mb-3" size={32}/><p className="font-bold">កំពុងទាញយកទិន្នន័យ...</p></div> ) : historyData.length === 0 ? ( <div className="text-center text-slate-500 font-bold py-5 bg-white rounded-xl border border-slate-200 shadow-sm">មិនមានប្រវត្តិបង់ប្រាក់ទេ</div> ) : (
-                <>
-                  <div className="text-center mb-4 text-xs sm:text-sm font-bold text-slate-600 bg-white py-2 rounded-lg border border-slate-200 shadow-sm">ប្រវត្តិបង់ប្រាក់ចុងក្រោយ</div>
-                  {historyData.map((record) => {
-                    const dateObj = new Date(record.paid_at || record.created_at);
-                    const formattedDate = `${dateObj.getDate().toString().padStart(2, '0')}/${(dateObj.getMonth()+1).toString().padStart(2, '0')}/${dateObj.getFullYear()} - ${dateObj.getHours().toString().padStart(2, '0')}:${dateObj.getMinutes().toString().padStart(2, '0')}`;
-                    const khmerMonthDisplay = monthsList[record.month - 1] || `ខែទី ${record.month}`;
-                    return (
-                      <div key={record.id} className="flex justify-between items-center p-3 sm:p-4 bg-white border-l-4 border-emerald-500 rounded-xl shadow-sm mb-3">
-                        <div><div className="font-bold text-slate-800 text-sm sm:text-base">{khmerMonthDisplay} ឆ្នាំ {record.year}</div><div className="text-[10px] sm:text-xs text-slate-500 font-medium mt-1 flex items-center gap-1"><Clock size={12}/> {formattedDate}</div><div className="text-xs sm:text-sm font-bold text-emerald-600 mt-1">៛ {Number(record.amount || 0).toLocaleString()}</div></div>
-                        <div className="flex items-center gap-2"><div className="text-emerald-600 font-bold bg-emerald-50 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full text-[10px] sm:text-xs border border-emerald-100 flex items-center"><CheckCircle size={14} className="mr-1"/> បានបង់</div><button onClick={() => handleUndoPayment(record.id, khmerMonthDisplay)} className="w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center rounded-full bg-rose-50 text-rose-500 hover:bg-rose-500 hover:text-white border border-rose-200 transition-colors shadow-sm cursor-pointer" title="លុបការបង់ប្រាក់ខែនេះ"><RotateCcw size={14} /></button></div>
-                      </div>
-                    );
-                  })}
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {roadEditData && (
-        <div className="absolute inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5 sm:p-6 transform transition-all">
-                <h3 className="font-bold text-indigo-800 text-base sm:text-lg mb-4 flex items-center"><Road className="mr-2 text-indigo-500" size={20}/>{roadEditData.isNew ? "បន្ថែមផ្លូវថ្មី" : "កែប្រែព័ត៌មានផ្លូវ"}</h3>
-                <label className="block text-[10px] sm:text-xs font-bold text-slate-500 mb-1">ឈ្មោះផ្លូវ (Road Name):</label><input type="text" value={roadEditData.name} onChange={e => setRoadEditData({...roadEditData, name: e.target.value})} className="w-full border border-slate-300 p-2 sm:p-2.5 mb-3 rounded-lg outline-none focus:border-indigo-500 font-bold text-sm" />
-                <label className="block text-[10px] sm:text-xs font-bold text-slate-500 mb-1">ទំហំផ្លូវ (Width e.g. 5m):</label><input type="text" value={roadEditData.width} onChange={e => setRoadEditData({...roadEditData, width: e.target.value})} className="w-full border border-slate-300 p-2 sm:p-2.5 mb-3 rounded-lg outline-none focus:border-indigo-500 font-bold text-sm" />
-                <label className="block text-[10px] sm:text-xs font-bold text-slate-500 mb-1">អាសយដ្ឋាន (Address):</label><input type="text" value={roadEditData.address} onChange={e => setRoadEditData({...roadEditData, address: e.target.value})} className="w-full border border-slate-300 p-2 sm:p-2.5 mb-3 rounded-lg outline-none focus:border-indigo-500 font-bold text-sm" />
-                <label className="block text-[10px] sm:text-xs font-bold text-slate-500 mb-1">ប្រភេទផ្លូវ (Road Type):</label><select value={roadEditData.road_type} onChange={e => setRoadEditData({...roadEditData, road_type: e.target.value})} className="w-full border border-slate-300 p-2 sm:p-2.5 mb-5 rounded-lg outline-none focus:border-indigo-500 font-bold bg-slate-50 text-indigo-700 text-sm"><option value="Land road">Land road (ផ្លូវដី)</option><option value="Concrete road">Concrete road (ផ្លូវបេតុង)</option><option value="Hight Ways road">Hight Ways road (ផ្លូវហាយវេ)</option><option value="Asphalt road">Asphalt road (ផ្លូវកៅស៊ូរ)</option><option value="Nation road">Nation road (ផ្លូវជាតិ)</option></select>
-                <div className="flex gap-2"><button onClick={saveRoadData} className="bg-indigo-600 hover:bg-indigo-700 text-white flex-1 py-2 sm:py-3 rounded-lg font-bold shadow-md transition-colors cursor-pointer text-sm">រក្សាទុក</button><button onClick={() => setRoadEditData(null)} className="bg-slate-200 hover:bg-slate-300 text-slate-700 flex-1 py-2 sm:py-3 rounded-lg font-bold transition-colors cursor-pointer text-sm">បោះបង់</button></div>
-            </div>
-        </div>
-      )}
-
     </div>
   );
 }
