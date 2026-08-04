@@ -4,8 +4,14 @@ import 'leaflet/dist/leaflet.css';
 import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css';
 import L from 'leaflet';
 import '@geoman-io/leaflet-geoman-free';
-import { MapPin, Eraser, Hexagon, Scissors, RotateCw, Search, Slash, Move, LogIn, LogOut, User, PieChart, Ban, Save, X, Spline, Download, Map as MapIcon, Printer, History, DollarSign, Clock, Camera, Road, Sliders, CheckCircle, RotateCcw, Home, XCircle, Wallet, CalendarDays, ChevronLeft, ChevronRight, List, Layers, Monitor, Smartphone, Navigation, Loader2 } from 'lucide-react';
+import { MapPin, Eraser, Hexagon, Scissors, RotateCw, Search, Slash, Move, LogIn, LogOut, PieChart, Ban, X, Spline, Map as MapIcon, Clock, CheckCircle, RotateCcw, Road, Monitor, Smartphone, Navigation, Loader2, Layers } from 'lucide-react';
 import { supabaseClient } from '../utils/supabase';
+
+// 🚀 ទាញយក Components ដែលយើងបានបំបែក
+import LoginModal from './LoginModal';
+import BillPrint from './BillPrint';
+import CustomerDetail from './CustomerDetail';
+import ReportDashboard from './ReportDashboard';
 
 const Toggle = ({ enabled, setEnabled }: { enabled: boolean, setEnabled: (val: boolean) => void }) => (
   <div onClick={() => setEnabled(!enabled)} className={`w-11 h-6 rounded-full flex items-center cursor-pointer p-1 transition-colors shadow-inner ${enabled ? 'bg-emerald-500' : 'bg-slate-300'}`}>
@@ -13,7 +19,6 @@ const Toggle = ({ enabled, setEnabled }: { enabled: boolean, setEnabled: (val: b
   </div>
 );
 
-// 🚀 មុខងារវេទមន្តសម្រាប់ច្របាច់រូបភាពមុននឹង Upload មិនឱ្យស៊ី Quota!
 const compressImage = (file: File): Promise<File> => {
   return new Promise((resolve) => {
     const reader = new FileReader();
@@ -23,22 +28,19 @@ const compressImage = (file: File): Promise<File> => {
       img.src = event.target?.result as string;
       img.onload = () => {
         const canvas = document.createElement('canvas');
-        const MAX_WIDTH = 800; // តម្រឹមទទឹងរូបត្រឹម 800px
+        const MAX_WIDTH = 800;
         let scaleSize = 1;
         if (img.width > MAX_WIDTH) { scaleSize = MAX_WIDTH / img.width; }
-        
         canvas.width = img.width * scaleSize;
         canvas.height = img.height * scaleSize;
-        
         const ctx = canvas.getContext('2d');
         ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
-        
         canvas.toBlob((blob) => {
           if (blob) {
             const compressedFile = new File([blob], file.name, { type: 'image/jpeg', lastModified: Date.now() });
             resolve(compressedFile);
-          } else { resolve(file); } // បើ Error ឱ្យប្រើរូបដើម
-        }, 'image/jpeg', 0.6); // កម្រិតច្បាស់ 60% ធានាថាតូចស្រាល!
+          } else { resolve(file); } 
+        }, 'image/jpeg', 0.6); 
       };
       img.onerror = () => resolve(file);
     };
@@ -64,7 +66,7 @@ export default function Map() {
 
   const [isMapReady, setIsMapReady] = useState(false);
   const [isFetchingData, setIsFetchingData] = useState(false);
-  const [isUploading, setIsUploading] = useState(false); // 🚀 State សម្រាប់លោត Loading ពេលបញ្ចូលរូប
+  const [isUploading, setIsUploading] = useState(false); 
 
   const [activeView, setActiveView] = useState<'map' | 'report'>('map');
   const [allData, setAllData] = useState<any[]>([]);
@@ -104,15 +106,7 @@ export default function Map() {
       if (session) {
         const { data: profile } = await supabaseClient.from('Profiles_Access').select('role, zone, can_edit_roof, can_edit_road, can_edit_border').eq('id', session.user.id).maybeSingle();
         const roleStr = profile?.role ? profile.role.toLowerCase().trim().replace(/\s+/g, '_') : 'user';
-        const userObj = { 
-            id: session.user.id, 
-            name: profile?.zone || session.user.email, 
-            zone: profile?.zone || '',
-            role: roleStr,
-            can_edit_roof: profile?.can_edit_roof || false,
-            can_edit_road: profile?.can_edit_road || false,
-            can_edit_border: profile?.can_edit_border || false
-        };
+        const userObj = { id: session.user.id, name: profile?.zone || session.user.email, zone: profile?.zone || '', role: roleStr, can_edit_roof: profile?.can_edit_roof || false, can_edit_road: profile?.can_edit_road || false, can_edit_border: profile?.can_edit_border || false };
         setCurrentUser(userObj);
         currentUserRef.current = userObj;
         setShowLoginModal(false);
@@ -128,9 +122,7 @@ export default function Map() {
     }
   }, [currentUser, isMapReady]);
 
-  useEffect(() => {
-    allDataRef.current = allData;
-  }, [allData]);
+  useEffect(() => { allDataRef.current = allData; }, [allData]);
 
   useEffect(() => {
     if (deviceChoice === 'mobile' && mapInstance.current) {
@@ -210,7 +202,7 @@ export default function Map() {
           }
         });
       });
-      if(bordersLayer.current) layer.addTo(bordersLayer.current);
+      if(bordersLayer.current) bordersLayer.current.addLayer(layer);
     }
   };
 
@@ -259,10 +251,10 @@ export default function Map() {
         }
       }
 
-      pointsLayer.current = L.featureGroup();
-      polygonsLayer.current = L.featureGroup();
-      roadsLayer.current = L.featureGroup();
-      bordersLayer.current = L.featureGroup();
+      pointsLayer.current = L.featureGroup().addTo(mapInstance.current);
+      polygonsLayer.current = L.featureGroup().addTo(mapInstance.current);
+      roadsLayer.current = L.featureGroup().addTo(mapInstance.current);
+      bordersLayer.current = L.featureGroup().addTo(mapInstance.current);
 
       setIsMapReady(true); 
 
@@ -381,40 +373,38 @@ export default function Map() {
     polygonsLayer.current?.eachLayer((layer: any) => { if (layer.options.dbId === id) layer.setStyle({ fillColor: colorHex }); });
   };
 
-  // 🚀 មុខងារ Upload រូបភាពទៅកាន់ Supabase
+  // 🚀 លុបចោលសញ្ញា # ចេញពីឈ្មោះ File ដើម្បីកុំឱ្យខូច URL
   const handlePhotoUpload = async (e: any) => {
     const file = e.target.files[0];
     if (!file || !selectedHome) return;
 
     try {
       setIsUploading(true);
-      
-      // 1. ច្របាច់រូបភាពឱ្យតូច (Compress)
       const compressedFile = await compressImage(file);
       
-      // 2. បង្កើតឈ្មោះ File ថ្មី
-      const fileExt = 'jpg';
-      const fileName = `${selectedHome.custom_id}_${Date.now()}.${fileExt}`;
+      // 🚀 លុបសញ្ញាពិសេសទាំងអស់ចេញពី ID (ឧទាហរណ៍ ID#2213 ទៅជា ID2213)
+      const safeId = selectedHome.custom_id.replace(/[^a-zA-Z0-9]/g, ''); 
+      const fileName = `${safeId}_${Date.now()}.jpg`;
 
-      // 3. បញ្ជូនទៅកាន់ Storage Bucket ឈ្មោះ 'photos'
       const { error } = await supabaseClient.storage
         .from('photos')
         .upload(fileName, compressedFile, { cacheControl: '3600', upsert: true });
 
       if (error) throw error;
 
-      // 4. ទាញយក URL ជាសាធារណៈ (Public URL)
       const { data: publicUrlData } = supabaseClient.storage
         .from('photos')
         .getPublicUrl(fileName);
 
-      // 5. Update ចូលក្នុង UI State ភ្លាមៗ!
-      setEditForm({ ...editForm, photo_url: publicUrlData.publicUrl });
+      // 🚀 បន្ថែម ?t= ពីក្រោយដើម្បីបង្ខំឱ្យ Browser ទាញយករូបថ្មីជានិច្ច
+      const newPhotoUrl = `${publicUrlData.publicUrl}?t=${Date.now()}`;
+      setEditForm({ ...editForm, photo_url: newPhotoUrl });
       
     } catch (error: any) {
       alert('❌ បរាជ័យក្នុងការបញ្ចូលរូបភាព៖ ' + error.message);
     } finally {
       setIsUploading(false);
+      e.target.value = null; // 🚀 Reset កន្លែងរើសរូបដើម្បីឱ្យអាចរើសម្តងទៀតបាន
     }
   };
 
@@ -429,7 +419,7 @@ export default function Map() {
         zone: editForm.zone, 
         status_color: editForm.status_color, 
         payment_month: editForm.payment_month,
-        photo_url: editForm.photo_url // 🚀 ធានាថារក្សាទុក URL រូបភាពចូល Database ផងដែរ
+        photo_url: editForm.photo_url 
     }).eq('id', selectedHome.id);
 
     if (!error) { 
@@ -463,7 +453,6 @@ export default function Map() {
 
     const nextMonthIdx = (lastPaidMonthIndex + 1) % 12; const nextMonthStr = monthsList[nextMonthIdx];
     
-    // 🚀 Update status និង រក្សាទុករូបភាពដែលទើបបញ្ចូល ព្រមគ្នាតែម្តងពេលបង់ប្រាក់
     const { error } = await supabaseClient.from('households').update({ status_color: 'blue', payment_month: nextMonthStr, photo_url: editForm.photo_url }).eq('id', selectedHome.id);
 
     if (!error) {
@@ -514,19 +503,6 @@ export default function Map() {
       setSelectedHome(freshData); 
       setEditForm({ custom_id: freshData.custom_id || '', customer_name: freshData.customer_name || '', monthly_fee: freshData.monthly_fee || 0, zone: freshData.zone || '', status_color: freshData.status_color || 'yellow', payment_month: freshData.payment_month || 'ខែមករា', photo_url: freshData.photo_url || '' }); 
     } else alert('រកមិនឃើញលេខកូដនេះទេ!');
-  };
-
-  const handleRealLogin = async (e: any) => {
-    e.preventDefault();
-    const email = e.target[0].value; const password = e.target[1].value;
-    const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
-    if (error) { alert('❌ មិនអាចចូលបានទេ៖ ' + error.message); } 
-    else if (data.session) {
-      const { data: profile } = await supabaseClient.from('Profiles_Access').select('role, zone, can_edit_roof, can_edit_road, can_edit_border').eq('id', data.user.id).maybeSingle();
-      const roleStr = profile?.role ? profile.role.toLowerCase().trim().replace(/\s+/g, '_') : 'user';
-      const userObj = { name: profile?.zone || email, zone: profile?.zone || '', role: roleStr, id: data.user.id, can_edit_roof: profile?.can_edit_roof || false, can_edit_road: profile?.can_edit_road || false, can_edit_border: profile?.can_edit_border || false };
-      setCurrentUser(userObj); setShowLoginModal(false); 
-    }
   };
 
   const openReport = async () => {
@@ -609,9 +585,6 @@ export default function Map() {
   const paginatedHouseholds = reportHouseholds.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
   const totalPages = Math.ceil(totalHouses / itemsPerPage);
 
-  const todayDate = new Date();
-  const billDateString = `${todayDate.getDate().toString().padStart(2, '0')}-${(todayDate.getMonth()+1).toString().padStart(2, '0')}-${todayDate.getFullYear()}`;
-
   return (
     <div className="flex flex-col h-screen w-full bg-slate-50 overflow-hidden font-sans relative">
       <style dangerouslySetInnerHTML={{__html: `
@@ -628,107 +601,8 @@ export default function Map() {
         }
       `}} />
 
-      {/* 🚀 ផ្ទាំងវិក័យប័ត្រ (ឃើញតែពេល Print) */}
-      {selectedHome && (
-        <div id="print-bill-container" className="hidden print:block bg-white text-black font-sans w-full max-w-[800px] mx-auto">
-            <div className="flex justify-between items-start mb-6">
-                <div className="flex flex-col items-center w-1/3">
-                    <div className="w-24 h-24 rounded-full border-2 border-black flex items-center justify-center mb-2 overflow-hidden">
-                        <img src="/logo/Map Ark.png" alt="Logo" className="w-full h-full object-cover grayscale" />
-                    </div>
-                    <h2 className="font-black text-2xl tracking-wider uppercase mt-2">Maps Ark</h2>
-                </div>
-                
-                <div className="w-2/3 text-right">
-                    <h1 className="font-black text-2xl mb-4">វិក្កយបត្រសេវាប្រមូលសំរាម</h1>
-                    <div className="flex flex-col items-end gap-1 text-sm font-medium">
-                        <div className="flex justify-between w-64"><span className="text-gray-600">លេខសម្គាល់អតិថិជន៖</span> <span className="font-bold">{editForm.custom_id || 'N/A'}</span></div>
-                        <div className="flex justify-between w-64"><span className="text-gray-600">ឈ្មោះអតិថិជន៖</span> <span className="font-bold">{editForm.customer_name || 'មិនមានឈ្មោះ'}</span></div>
-                        <div className="flex justify-between w-64"><span className="text-gray-600">លេខវិក្កយបត្រ៖</span> <span className="font-bold">INV-{Math.floor(100000 + Math.random() * 900000)}</span></div>
-                        <div className="flex justify-between w-64"><span className="text-gray-600">អ្នកទទួលប្រាក់៖</span> <span className="font-bold">{editForm.zone || 'N/A'}</span></div>
-                        <div className="flex justify-between w-64"><span className="text-gray-600">ថ្ងៃចេញវិក្កយបត្រ៖</span> <span className="font-bold">{billDateString}</span></div>
-                    </div>
-                </div>
-            </div>
+      <BillPrint selectedHome={selectedHome} editForm={editForm} currentUser={currentUser} />
 
-            <div className="text-xs mb-4 text-gray-700 font-medium leading-relaxed">
-                អាសយដ្ឋាន៖ អាគារលេខ ០០៨៨ វិថីព្រះបាទនរោត្ដម ភូមិ៣ សង្កាត់កំពង់ចាម ក្រុងកំពង់ចាម ខេត្តកំពង់ចាម <br/>
-                លេខទំនាក់ទំនង៖ 096 603 7883 / 016 417 069 ទទួលទូរស័ព្ទពីថ្ងៃច័ន្ទ ដល់ថ្ងៃសុក្រ រៀងរាល់ម៉ោងធ្វើការ
-            </div>
-
-            <table className="w-full border-collapse border border-black mb-2 text-sm">
-                <thead>
-                    <tr className="bg-gray-100">
-                        <th className="border border-black p-2 text-left w-1/2">បរិយាយ / Description</th>
-                        <th className="border border-black p-2 text-center">ប្រចាំខែ / Month</th>
-                        <th className="border border-black p-2 text-right">ទឹកប្រាក់ / Amount</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td className="border border-black p-2 font-bold">សេវាប្រមូលសំរាម ៖ {editForm.customer_name}</td>
-                        <td className="border border-black p-2 text-center font-bold">{editForm.payment_month}</td>
-                        <td className="border border-black p-2 text-right font-bold">{Number(editForm.monthly_fee).toLocaleString()} ៛</td>
-                    </tr>
-                    <tr className="bg-gray-100">
-                        <td colSpan={2} className="border border-black p-2 text-right font-bold">ទឹកប្រាក់ត្រូវទូទាត់ / Total Amount Due</td>
-                        <td className="border border-black p-2 text-right font-black text-lg">{Number(editForm.monthly_fee).toLocaleString()} ៛</td>
-                    </tr>
-                </tbody>
-            </table>
-            
-            <div className="text-center text-xs text-gray-600 font-medium mb-6">
-                * បំណុលអតីតកាលបញ្ជូលវិញក្នុងវិក្កយបត្រ / Balance brought forward as of invoice date
-            </div>
-
-            <div className="flex justify-between items-start mb-8">
-                <div className="text-xs font-medium leading-relaxed">
-                    <span className="font-bold">ចំណាំ៖</span>
-                    <ul className="list-disc pl-5 mt-1 space-y-1">
-                        <li>ប្រាក់វិក្កយបត្រទាំងអស់គ្មានការបង្វិលសង ឬសងដោះដូរយឺតយ៉ាវ</li>
-                        <li>ការបង់ថ្លៃសេវាត្រូវតែមានវិក្កយបត្រ</li>
-                        <li>សូមពិនិត្យព័ត៌មានលើវិក្កយបត្រអោយបានច្បាស់មុនពេលបង់ប្រាក់</li>
-                        <li>របៀបបង់ប្រាក់៖ អាចបង់ថ្លៃសេវានៅរដ្ឋបាលក្រុងកំពង់ចាម ឬតាមមួយភ្នាក់ងារទំនាក់ទំនងផ្ទាល់ ឬតាម ABA App</li>
-                    </ul>
-                </div>
-                <div className={`px-6 py-2 border-2 border-black font-black text-lg tracking-widest uppercase ${editForm.status_color === 'blue' ? 'bg-gray-200' : 'bg-gray-300'}`}>
-                    {editForm.status_color === 'blue' ? 'PAID' : 'PENDING'}
-                </div>
-            </div>
-
-            <div className="border-t-2 border-dashed border-gray-400 my-8"></div>
-
-            <div className="border border-black p-4 rounded-lg flex justify-between items-start">
-                <div className="flex flex-col gap-1 text-sm font-medium w-2/3">
-                    <div className="flex"><span className="w-32">លេខសម្គាល់អតិថិជន៖</span> <span className="font-bold">{editForm.custom_id}</span></div>
-                    <div className="flex"><span className="w-32">ឈ្មោះអតិថិជន៖</span> <span className="font-bold">{editForm.customer_name}</span></div>
-                    <div className="flex"><span className="w-32">អាសយដ្ឋាន៖</span> <span className="font-bold">{editForm.zone}</span></div>
-                    <div className="flex"><span className="w-32">លេខទូរស័ព្ទអតិថិជន៖</span> <span className="font-bold">N/A</span></div>
-                    <div className="flex mt-2 pt-2 border-t border-gray-200"><span className="w-32 font-bold">ទឹកប្រាក់ត្រូវទូទាត់៖</span> <span className="font-black text-lg">{Number(editForm.monthly_fee).toLocaleString()} ៛</span></div>
-                </div>
-                
-                <div className="w-1/3 flex flex-col items-end">
-                    <span className="font-bold mb-2">លេខសម្គាល់អតិថិជន</span>
-                    <img src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${editForm.custom_id}`} alt="QR Code" className="w-24 h-24 border border-black p-1" />
-                </div>
-            </div>
-
-            <div className="flex gap-4 mt-4 h-32">
-                <div className="w-1/2 border border-black rounded-lg overflow-hidden bg-gray-100 flex items-center justify-center">
-                    {editForm.photo_url ? (
-                        <img src={editForm.photo_url} className="w-full h-full object-cover grayscale" alt="Location" />
-                    ) : (
-                        <span className="text-gray-400 text-xs">គ្មានរូបថតទីតាំង</span>
-                    )}
-                </div>
-                <div className="w-1/2 border border-black rounded-lg overflow-hidden bg-gray-100 flex items-center justify-center">
-                   <span className="text-gray-400 text-xs">Map Placeholder</span>
-                </div>
-            </div>
-        </div>
-      )}
-
-      {/* 🚀 ផ្នែក UI ធម្មតា */}
       <div className="print:hidden w-full h-full flex flex-col relative">
         {isFetchingData && (
             <div className="absolute top-20 left-1/2 transform -translate-x-1/2 z-[3000] bg-indigo-600 text-white px-5 py-2.5 rounded-full shadow-2xl flex items-center gap-3 animate-pulse border border-indigo-400">
@@ -739,7 +613,7 @@ export default function Map() {
 
         <header className="h-[64px] absolute top-0 left-0 right-0 bg-white/95 backdrop-blur-md flex justify-between items-center px-4 sm:px-6 z-[2000] shadow-sm">
             <div className="flex items-center gap-2 sm:gap-3">
-            <img src="/logo/Map Ark.png" alt="Logo" onError={(e) => e.currentTarget.style.display='none'} className="w-8 h-8 object-contain rounded-md" />
+            <img src="/logo/Map Ark.png" alt="Logo" onError={(e: any) => e.currentTarget.style.display='none'} className="w-8 h-8 object-contain rounded-md" />
             <h1 className="text-lg sm:text-xl font-bold text-indigo-700 hidden sm:block">Maps Ark</h1>
             {currentUser && (
                 <span className={`text-[10px] sm:text-xs px-2 py-1 rounded-full font-bold border shadow-sm flex items-center gap-1 ${currentUser.role === 'super_admin' ? 'bg-purple-100 text-purple-700 border-purple-200' : currentUser.role === 'admin' ? 'bg-rose-100 text-rose-700 border-rose-200' : 'bg-emerald-100 text-emerald-700 border-emerald-200'}`}>
@@ -834,82 +708,24 @@ export default function Map() {
             </main>
         </div>
 
-        {selectedHome && activeView === 'map' && (
-            <div className="absolute top-[80px] right-0 sm:right-4 left-0 sm:left-auto mx-auto sm:mx-0 z-[9999] w-[calc(100vw-32px)] sm:w-[380px] bg-white rounded-3xl shadow-2xl flex flex-col overflow-hidden max-h-[calc(100vh-100px)] border border-slate-200">
-            <div className="bg-white p-4 border-b border-slate-100 flex justify-between items-center">
-                <h3 className="font-black text-indigo-900 text-sm flex items-center gap-2"><User className="text-indigo-600" size={18} /> ព័ត៌មានអតិថិជន</h3>
-                <button onClick={() => setSelectedHome(null)} className="text-slate-400 hover:text-rose-500 cursor-pointer"><X size={20} /></button>
-            </div>
-            <div className="p-5 flex flex-col gap-4 overflow-y-auto hide-scrollbar bg-white pb-10">
-                
-                {/* 🚀 កន្លែងសម្រាប់ Upload រូបថតអតិថិជន */}
-                <div className="flex flex-col gap-1">
-                    <span className="text-[11px] text-slate-700 font-bold flex items-center gap-1">
-                        <Camera size={14} /> រូបថត (ចុចដើម្បីបញ្ចូល)៖
-                    </span>
-                    <label className="w-full h-32 bg-slate-100 rounded-lg overflow-hidden border border-slate-200 flex flex-col items-center justify-center relative cursor-pointer hover:bg-slate-200 transition-colors">
-                        {isUploading ? (
-                            <div className="flex flex-col items-center text-indigo-500">
-                                <Loader2 className="animate-spin mb-2" size={24} />
-                                <span className="text-xs font-bold">កំពុងបញ្ជូនរូបភាព...</span>
-                            </div>
-                        ) : editForm.photo_url ? (
-                            <>
-                                <img src={editForm.photo_url} className="w-full h-full object-cover" alt="Customer" />
-                                <div className="absolute bottom-2 right-2 bg-black/60 text-white p-1.5 rounded-lg backdrop-blur-md shadow-md">
-                                    <Camera size={16} />
-                                </div>
-                            </>
-                        ) : (
-                            <div className="flex flex-col items-center text-slate-400">
-                                <Camera size={24} className="mb-1" />
-                                <span className="text-xs font-bold text-slate-500">ចុចទីនេះដើម្បីបញ្ចូលរូបថត</span>
-                            </div>
-                        )}
-                        <input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} disabled={isUploading} />
-                    </label>
-                </div>
-
-                <div className="flex flex-col gap-1.5"><span className="text-[11px] text-slate-700 font-bold">លេខកូដផ្ទះ៖</span><input type="text" value={editForm.custom_id} onChange={(e) => setEditForm({...editForm, custom_id: e.target.value})} className="w-full px-3 py-2.5 text-sm font-bold text-slate-800 bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-500 transition-colors" /></div>
-                <div className="flex flex-col gap-1.5"><span className="text-[11px] text-slate-700 font-bold">ឈ្មោះអតិថិជន (ម្ចាស់ហាង/សំអាង)៖</span><input type="text" value={editForm.customer_name} onChange={(e) => setEditForm({...editForm, customer_name: e.target.value})} className="w-full px-3 py-2.5 text-sm font-bold text-slate-800 bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-500 transition-colors" /></div>
-                
-                <div className="flex flex-col gap-1.5"><span className="text-[11px] text-slate-700 font-bold">តម្លៃសេវា (៛)៖</span>
-                <input 
-                    type="text" 
-                    value={editForm.monthly_fee === '' ? '' : Number(editForm.monthly_fee).toLocaleString()} 
-                    onChange={(e) => {
-                    const rawValue = e.target.value.replace(/,/g, '').replace(/\D/g, ''); 
-                    setEditForm({...editForm, monthly_fee: rawValue === '' ? '' : Number(rawValue)});
-                    }} 
-                    className="w-full px-3 py-2.5 text-sm font-black text-emerald-600 bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-500 transition-colors" 
-                />
-                </div>
-
-                <div className="flex flex-col gap-1.5"><span className="text-[11px] text-slate-700 font-bold">តំបន់ (Zone)៖</span><input type="text" value={editForm.zone} onChange={(e) => setEditForm({...editForm, zone: e.target.value})} className="w-full px-3 py-2.5 text-sm font-bold text-slate-800 bg-slate-50 border border-slate-200 rounded-lg outline-none" disabled={currentUser?.role !== 'super_admin'} /></div>
-                {editForm.status_color === 'blue' ? ( <div className="w-full mt-2 p-3 rounded-xl font-bold bg-emerald-50 text-emerald-700 text-[13px] border border-emerald-100 flex items-center justify-center gap-2 shadow-sm"><CheckCircle size={16} /> បានបង់រួចរាល់ (ខែបន្ទាប់៖ {editForm.payment_month})</div> ) : ( <div className="w-full mt-2 p-3 rounded-xl bg-amber-50 text-amber-800 text-sm border border-amber-100 shadow-sm flex flex-col items-center"><div className="font-bold flex items-center gap-2 mb-1 text-[12px]"><Clock size={14} /> ស្ថានភាពបច្ចុប្បន្ន</div><div className="font-black text-amber-700 text-[13px]">{editForm.payment_month} (មិនទាន់បានបង់)</div></div> )}
-                
-                {editForm.status_color !== 'blue' && ( <div className="mt-2 p-4 rounded-xl border border-indigo-100 bg-indigo-50 shadow-sm"><label className="block text-[11px] font-black text-indigo-900 mb-2">បង់ប្រាក់ (រើសខែ និងចំនួនខែ)៖</label><select value={payMonth} onChange={(e) => setPayMonth(e.target.value)} className="w-full mb-3 border border-indigo-200 px-3 py-2 rounded-lg font-bold text-slate-700 bg-white outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer">{monthsList.map(m => <option key={m} value={m}>បង់ចាប់ពី៖ {m}</option>)}</select><div className="flex items-center gap-3">
-                <input type="number" value={payNumMonths} onChange={(e) => setPayNumMonths(e.target.value === '' ? '' : parseInt(e.target.value))} min="1" max="12" className="w-20 border border-indigo-200 px-3 py-2.5 rounded-lg font-bold text-lg text-center outline-none focus:ring-2 focus:ring-amber-400 bg-white shadow-inner" />
-                <button onClick={handleQuickPay} className="flex-1 bg-amber-500 text-white font-bold py-3 rounded-lg hover:bg-amber-600 transition-colors shadow-md flex justify-center items-center gap-2 text-[13px] cursor-pointer"><DollarSign size={16} /> បង់ប្រាក់</button></div></div> )}
-                
-                <div className="mt-2 border border-slate-200 rounded-xl bg-slate-50 shadow-sm">
-                <div onClick={() => setIsManualEditOpen(!isManualEditOpen)} className="p-3 font-bold text-slate-700 text-[12px] cursor-pointer hover:bg-slate-200 flex items-center justify-center gap-2 transition-colors rounded-xl"><Sliders className="text-indigo-500" size={16} /> ជម្រើសកែប្រែដោយដៃ (Manual Edit)</div>
-                {isManualEditOpen && (
-                    <div className="p-4 border-t border-slate-200 space-y-3 bg-white rounded-b-xl">
-                    <div><label className="block text-xs font-bold mb-1 text-slate-500">ខែត្រូវបង់បន្ទាប់៖</label><select value={editForm.payment_month} onChange={e => setEditForm({...editForm, payment_month: e.target.value})} className="w-full border px-3 py-2 rounded-lg font-bold text-indigo-700 bg-slate-50 outline-none cursor-pointer">{monthsList.map(m => <option key={m} value={m}>{m}</option>)}</select></div>
-                    <div><label className="block text-xs font-bold mb-1 text-slate-500">ស្ថានភាពបង់ប្រាក់៖</label><select value={editForm.status_color} onChange={e => setEditForm({...editForm, status_color: e.target.value})} className="w-full border px-3 py-2 rounded-lg bg-slate-50 font-bold outline-none cursor-pointer"><option value="blue">🔵 បានបង់</option><option value="yellow">🟡 មិនទាន់បានបង់</option><option value="red">🔴 ទីតាំងបិទ</option><option value="black">⚫ បានបង់តែទុកសិន</option></select></div>
-                    </div>
-                )}
-                </div>
-                <button onClick={handleOpenHistory} className="w-full mt-1 py-3 rounded-xl font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition-colors shadow-sm flex justify-center items-center gap-2 text-[12px] cursor-pointer"><History size={16} /> មើលប្រវត្តិបង់ប្រាក់</button>
-            </div>
-            
-            <div className="p-4 bg-white border-t border-slate-100 flex gap-2">
-                <button onClick={handleUpdate} className="flex-1 bg-[#5252d6] text-white font-bold py-3 rounded-xl hover:bg-indigo-700 flex justify-center items-center gap-2 cursor-pointer shadow-md text-[13px] transition-colors"><Save size={16} /> រក្សាទុក</button>
-                <button onClick={() => window.print()} className="flex-1 bg-[#0ea5e9] text-white font-bold py-3 rounded-xl hover:bg-sky-500 flex justify-center items-center gap-2 cursor-pointer shadow-md text-[13px] transition-colors"><Printer size={16} /> បោះពុម្ព</button>
-            </div>
-            </div>
-        )}
+        <CustomerDetail
+            selectedHome={selectedHome}
+            setSelectedHome={setSelectedHome}
+            editForm={editForm}
+            setEditForm={setEditForm}
+            isUploading={isUploading}
+            handlePhotoUpload={handlePhotoUpload}
+            payMonth={payMonth}
+            setPayMonth={setPayMonth}
+            payNumMonths={payNumMonths}
+            setPayNumMonths={setPayNumMonths}
+            handleQuickPay={handleQuickPay}
+            isManualEditOpen={isManualEditOpen}
+            setIsManualEditOpen={setIsManualEditOpen}
+            handleOpenHistory={handleOpenHistory}
+            handleUpdate={handleUpdate}
+            currentUser={currentUser}
+        />
 
         {currentUser && !deviceChoice && !showLoginModal && (
             <div className="absolute inset-0 z-[10000] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
@@ -934,105 +750,31 @@ export default function Map() {
         )}
 
         {showLoginModal && (
-            <div className="absolute inset-0 z-[9999] flex items-center justify-center bg-indigo-900 px-4">
-            <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl p-6 sm:p-8">
-                <div className="text-center mb-6"><img src="/logo/Map Ark.png" alt="Maps Ark Logo" onError={(e) => e.currentTarget.style.display='none'} className="w-20 h-20 sm:w-24 sm:h-24 mx-auto mb-4 object-contain rounded-full shadow-md border-2 border-indigo-100" /><h1 className="text-xl sm:text-2xl font-bold text-slate-800">ចូលប្រើប្រព័ន្ធ</h1></div>
-                <form onSubmit={handleRealLogin} className="space-y-4">
-                <input type="email" placeholder="Email" required className="w-full px-4 py-3 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-slate-700 text-sm" />
-                <input type="password" placeholder="Password" required className="w-full px-4 py-3 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-slate-700 text-sm" />
-                <button type="submit" className="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl hover:bg-indigo-700 transition-colors shadow-md cursor-pointer text-sm">ចូល</button>
-                </form>
-            </div>
-            </div>
+            <LoginModal setCurrentUser={setCurrentUser} setShowLoginModal={setShowLoginModal} />
         )}
 
         {activeView === 'report' && (
-            <div className="flex-1 w-full h-full overflow-y-auto bg-slate-50 pt-[80px] sm:pt-[100px] p-4 sm:p-6 lg:p-10 relative z-10">
-            <div className="max-w-6xl mx-auto space-y-4 sm:space-y-6">
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-100">
-                <div><h2 className="text-xl sm:text-2xl font-bold text-slate-800">របាយការណ៍ទូទៅ</h2><p className="text-xs sm:text-sm text-slate-500 mt-1">ទិន្នន័យស្ថិតិ និងការគ្រប់គ្រង</p></div>
-                <div className="flex gap-2 flex-wrap items-center w-full md:w-auto">
-                    {currentUser?.role === 'super_admin' && (
-                    <select value={reportZone} onChange={e => setReportZone(e.target.value)} className="px-3 py-2 border rounded-lg text-xs sm:text-sm bg-indigo-50 font-bold text-indigo-700 outline-none shadow-sm border-indigo-200 cursor-pointer flex-1 md:flex-none">
-                        <option value="">🗺️ គ្រប់តំបន់ទាំងអស់</option>
-                        {uniqueZones.map(z => <option key={z} value={z}>{z}</option>)}
-                    </select>
-                    )}
-                    {['admin', 'super_admin'].includes(currentUser?.role || '') && (
-                    <>
-                        <select onChange={handleGlobalMonthChange} defaultValue="" className="px-3 py-2 border rounded-lg text-xs sm:text-sm bg-slate-50 font-bold text-slate-700 outline-none cursor-pointer flex-1 md:flex-none">
-                        <option value="" disabled>⚙️ ប្តូរខែរួម</option>
-                        {monthsList.map(m => <option key={m} value={m}>{m}</option>)}
-                        </select>
-                        <select onChange={handleGlobalStatusChange} defaultValue="" className="px-3 py-2 border rounded-lg text-xs sm:text-sm bg-slate-50 font-bold text-slate-700 outline-none cursor-pointer flex-1 md:flex-none">
-                        <option value="" disabled>⚙️ ប្តូរស្ថានភាពរួម</option>
-                        <option value="blue">🔵 បានបង់</option>
-                        <option value="yellow">🟡 មិនទាន់បង់</option>
-                        <option value="red">🔴 បិទ</option>
-                        <option value="black">⚫ បង់តែទុកសិន</option>
-                        </select>
-                    </>
-                    )}
-                    <button onClick={handleExportCSV} className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-2 rounded-lg text-xs sm:text-sm font-bold hover:bg-emerald-100 shadow-sm flex items-center justify-center cursor-pointer flex-1 md:flex-none w-full md:w-auto"><Download className="mr-1" size={16} /> ទាញយក CSV</button>
-                </div>
-                </div>
-
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-                <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between"><div className="flex justify-between items-start mb-2"><span className="text-xs sm:text-sm font-bold text-slate-500">ផ្ទះសរុប</span><div className="p-1.5 sm:p-2 bg-indigo-50 rounded-lg text-indigo-500"><Home className="sm:w-5 sm:h-5" size={18} /></div></div><div className="text-2xl sm:text-3xl font-black text-slate-800">{totalHouses}</div></div>
-                <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between"><div className="flex justify-between items-start mb-2"><span className="text-xs sm:text-sm font-bold text-slate-500">បានបង់</span><div className="p-1.5 sm:p-2 bg-emerald-50 rounded-lg text-emerald-500"><CheckCircle className="sm:w-5 sm:h-5" size={18} /></div></div><div className="text-2xl sm:text-3xl font-black text-emerald-600">{paidHouses}</div></div>
-                <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between"><div className="flex justify-between items-start mb-2"><span className="text-xs sm:text-sm font-bold text-slate-500">រង់ចាំបង់</span><div className="p-1.5 sm:p-2 bg-amber-50 rounded-lg text-amber-500"><Clock className="sm:w-5 sm:h-5" size={18} /></div></div><div className="text-2xl sm:text-3xl font-black text-amber-500">{pendingHouses}</div></div>
-                <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between"><div className="flex justify-between items-start mb-2"><span className="text-xs sm:text-sm font-bold text-slate-500">បិទ</span><div className="p-1.5 sm:p-2 bg-rose-50 rounded-lg text-rose-500"><XCircle className="sm:w-5 sm:h-5" size={18} /></div></div><div className="text-2xl sm:text-3xl font-black text-rose-600">{closedHouses}</div></div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
-                <div className="bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-100"><div className="flex justify-between items-center mb-3 sm:mb-4"><h3 className="font-bold text-slate-800 text-sm sm:text-base">ចំណូលប្រចាំខែនេះ</h3><div className="p-1.5 sm:p-2 bg-emerald-50 rounded-lg text-emerald-500"><Wallet className="sm:w-6 sm:h-6" size={20} /></div></div><div className="text-2xl sm:text-4xl font-black text-emerald-600">{monthlyRevenue.toLocaleString()} ៛</div></div>
-                <div className="bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-100 border-l-4 border-l-indigo-500"><div className="flex justify-between items-center mb-3 sm:mb-4"><h3 className="font-bold text-slate-800 text-sm sm:text-base">ចំណូលប្រចាំថ្ងៃនេះ (Today)</h3><div className="p-1.5 sm:p-2 bg-indigo-50 rounded-lg text-indigo-500"><CalendarDays className="sm:w-6 sm:h-6" size={20} /></div></div><div className="text-2xl sm:text-4xl font-black text-indigo-600">{dailyRevenue.toLocaleString()} ៛</div></div>
-                </div>
-
-                <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-                <div className="px-4 sm:px-6 py-4 sm:py-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                    <h3 className="font-bold text-slate-800 flex items-center text-sm sm:text-base"><List className="mr-2 text-indigo-500" size={18} />បញ្ជីឈ្មោះអតិថិជន</h3>
-                    <div className="flex items-center gap-2">
-                    <span className="text-[10px] sm:text-xs text-slate-500 font-bold hidden sm:inline">បង្ហាញ៖</span>
-                    <select value={itemsPerPage} onChange={e => {setItemsPerPage(Number(e.target.value)); setCurrentPage(1);}} className="border px-2 py-1 rounded text-xs sm:text-sm outline-none font-bold text-indigo-700 bg-white shadow-sm cursor-pointer">
-                        <option value="10">10 ជួរ</option><option value="50">50 ជួរ</option><option value="100">100 ជួរ</option>
-                    </select>
-                    </div>
-                </div>
-                <div className="overflow-x-auto">
-                    <table className="w-full text-xs sm:text-sm text-left text-slate-600">
-                    <thead className="bg-slate-100/50 text-slate-500 font-bold border-b">
-                        <tr><th className="px-4 sm:px-6 py-3 sm:py-4">លេខកូដ</th><th className="px-4 sm:px-6 py-3 sm:py-4">ឈ្មោះ</th><th className="px-4 sm:px-6 py-3 sm:py-4">តំបន់</th><th className="px-4 sm:px-6 py-3 sm:py-4">ខែត្រូវបង់</th><th className="px-4 sm:px-6 py-3 sm:py-4">ស្ថានភាព</th></tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                        {paginatedHouseholds.length === 0 && <tr><td colSpan={5} className="text-center py-6 font-bold text-slate-400">គ្មានទិន្នន័យទេ</td></tr>}
-                        {paginatedHouseholds.map(h => (
-                        <tr key={h.id} className="hover:bg-slate-50 transition-colors whitespace-nowrap">
-                            <td className="px-4 sm:px-6 py-3 sm:py-4 font-bold text-slate-800">{h.custom_id}</td>
-                            <td className="px-4 sm:px-6 py-3 sm:py-4 font-bold">{h.customer_name || '---'}</td>
-                            <td className="px-4 sm:px-6 py-3 sm:py-4">{h.zone || '---'}</td>
-                            <td className="px-4 sm:px-6 py-3 sm:py-4">{h.payment_month}</td>
-                            <td className="px-4 sm:px-6 py-3 sm:py-4">
-                            {h.status_color === 'blue' ? <span className="px-2 sm:px-3 py-1 bg-emerald-100 text-emerald-700 rounded-lg text-[10px] sm:text-xs font-bold border border-emerald-200">🔵 បានបង់</span> :
-                            h.status_color === 'yellow' ? <span className="px-2 sm:px-3 py-1 bg-amber-100 text-amber-700 rounded-lg text-[10px] sm:text-xs font-bold border border-amber-200">🟡 មិនទាន់បង់</span> :
-                            h.status_color === 'red' ? <span className="px-2 sm:px-3 py-1 bg-rose-100 text-rose-700 rounded-lg text-[10px] sm:text-xs font-bold border border-rose-200">🔴 បិទ</span> :
-                            <span className="px-2 sm:px-3 py-1 bg-slate-200 text-slate-800 rounded-lg text-[10px] sm:text-xs font-bold border border-slate-300">⚫ ទុកសិន</span>}
-                            </td>
-                        </tr>
-                        ))}
-                    </tbody>
-                    </table>
-                </div>
-                <div className="px-4 sm:px-6 py-3 sm:py-4 border-t border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-3 sm:gap-0 bg-slate-50">
-                    <span className="text-[10px] sm:text-xs text-slate-500 font-bold">បង្ហាញ {(currentPage-1)*itemsPerPage + 1} - {Math.min(currentPage*itemsPerPage, totalHouses)} នៃ {totalHouses}</span>
-                    <div className="flex gap-2">
-                    <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="px-3 py-1.5 bg-white border rounded text-slate-600 hover:bg-slate-100 disabled:opacity-50 text-xs sm:text-sm font-bold flex items-center cursor-pointer"><ChevronLeft className="mr-1" size={16} /> ថយក្រោយ</button>
-                    <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage >= totalPages} className="px-3 py-1.5 bg-white border rounded text-slate-600 hover:bg-slate-100 disabled:opacity-50 text-xs sm:text-sm font-bold flex items-center cursor-pointer">ទៅមុខ <ChevronRight className="ml-1" size={16} /></button>
-                    </div>
-                </div>
-              </div>
-            </div>
-            </div>
+            <ReportDashboard
+                currentUser={currentUser}
+                reportZone={reportZone}
+                setReportZone={setReportZone}
+                uniqueZones={uniqueZones}
+                handleGlobalMonthChange={handleGlobalMonthChange}
+                handleGlobalStatusChange={handleGlobalStatusChange}
+                handleExportCSV={handleExportCSV}
+                totalHouses={totalHouses}
+                paidHouses={paidHouses}
+                pendingHouses={pendingHouses}
+                closedHouses={closedHouses}
+                monthlyRevenue={monthlyRevenue}
+                dailyRevenue={dailyRevenue}
+                paginatedHouseholds={paginatedHouseholds}
+                itemsPerPage={itemsPerPage}
+                setItemsPerPage={setItemsPerPage}
+                currentPage={currentPage}
+                setCurrentPage={setCurrentPage}
+                totalPages={totalPages}
+            />
         )}
 
         {historyModalOpen && (
