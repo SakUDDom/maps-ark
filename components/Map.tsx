@@ -13,6 +13,39 @@ const Toggle = ({ enabled, setEnabled }: { enabled: boolean, setEnabled: (val: b
   </div>
 );
 
+// 🚀 មុខងារវេទមន្តសម្រាប់ច្របាច់រូបភាពមុននឹង Upload មិនឱ្យស៊ី Quota!
+const compressImage = (file: File): Promise<File> => {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target?.result as string;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX_WIDTH = 800; // តម្រឹមទទឹងរូបត្រឹម 800px
+        let scaleSize = 1;
+        if (img.width > MAX_WIDTH) { scaleSize = MAX_WIDTH / img.width; }
+        
+        canvas.width = img.width * scaleSize;
+        canvas.height = img.height * scaleSize;
+        
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
+        
+        canvas.toBlob((blob) => {
+          if (blob) {
+            const compressedFile = new File([blob], file.name, { type: 'image/jpeg', lastModified: Date.now() });
+            resolve(compressedFile);
+          } else { resolve(file); } // បើ Error ឱ្យប្រើរូបដើម
+        }, 'image/jpeg', 0.6); // កម្រិតច្បាស់ 60% ធានាថាតូចស្រាល!
+      };
+      img.onerror = () => resolve(file);
+    };
+    reader.onerror = () => resolve(file);
+  });
+};
+
 export default function Map() {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<L.Map | null>(null);
@@ -31,6 +64,7 @@ export default function Map() {
 
   const [isMapReady, setIsMapReady] = useState(false);
   const [isFetchingData, setIsFetchingData] = useState(false);
+  const [isUploading, setIsUploading] = useState(false); // 🚀 State សម្រាប់លោត Loading ពេលបញ្ចូលរូប
 
   const [activeView, setActiveView] = useState<'map' | 'report'>('map');
   const [allData, setAllData] = useState<any[]>([]);
@@ -60,8 +94,6 @@ export default function Map() {
 
   const currentUserRef = useRef<any>(null);
   const allDataRef = useRef<any[]>([]);
-  
-  // 🚀 អាវុធសម្ងាត់ទប់ស្កាត់ការ Fetch ច្រើនដង! 
   const hasFetchedRef = useRef(false);
 
   const monthsList = ['ខែមករា', 'ខែកកុម្ភៈ', 'ខែមីនា', 'ខែមេសា', 'ខែឧសភា', 'ខែមិថុនា', 'ខែកក្កដា', 'ខែសីហា', 'ខែកញ្ញា', 'ខែតុលា', 'ខែវិច្ឆិកា', 'ខែធ្នូ'];
@@ -90,7 +122,6 @@ export default function Map() {
   }, []);
 
   useEffect(() => {
-    // 🚀 អនុញ្ញាតឱ្យ Fetch តែម្តងគត់ ទោះបង Save កូដប៉ុន្មានដងក៏ដោយ!
     if (currentUser && isMapReady && !hasFetchedRef.current) {
       hasFetchedRef.current = true;
       fetchAndRenderData(currentUser);
@@ -175,7 +206,6 @@ export default function Map() {
           const newZoneName = prompt("កែប្រែឈ្មោះតំបន់ (Zone) សម្រាប់ព្រំដែននេះ៖", b.zone);
           if (newZoneName && newZoneName.trim() !== "" && newZoneName !== b.zone) {
               await supabaseClient.from('zone_borders').update({ zone: newZoneName.trim() }).eq('id', b.id);
-              // 🚀 Update តែ Tooltip លែង Fetch ថ្មី
               l.bindTooltip(`ព្រំដែនតំបន់៖ <b>${newZoneName.trim()}</b>`, { sticky: true, className: 'font-bold text-sm bg-white px-2 py-1 shadow-md border border-slate-200 rounded' });
           }
         });
@@ -351,11 +381,57 @@ export default function Map() {
     polygonsLayer.current?.eachLayer((layer: any) => { if (layer.options.dbId === id) layer.setStyle({ fillColor: colorHex }); });
   };
 
+  // 🚀 មុខងារ Upload រូបភាពទៅកាន់ Supabase
+  const handlePhotoUpload = async (e: any) => {
+    const file = e.target.files[0];
+    if (!file || !selectedHome) return;
+
+    try {
+      setIsUploading(true);
+      
+      // 1. ច្របាច់រូបភាពឱ្យតូច (Compress)
+      const compressedFile = await compressImage(file);
+      
+      // 2. បង្កើតឈ្មោះ File ថ្មី
+      const fileExt = 'jpg';
+      const fileName = `${selectedHome.custom_id}_${Date.now()}.${fileExt}`;
+
+      // 3. បញ្ជូនទៅកាន់ Storage Bucket ឈ្មោះ 'photos'
+      const { error } = await supabaseClient.storage
+        .from('photos')
+        .upload(fileName, compressedFile, { cacheControl: '3600', upsert: true });
+
+      if (error) throw error;
+
+      // 4. ទាញយក URL ជាសាធារណៈ (Public URL)
+      const { data: publicUrlData } = supabaseClient.storage
+        .from('photos')
+        .getPublicUrl(fileName);
+
+      // 5. Update ចូលក្នុង UI State ភ្លាមៗ!
+      setEditForm({ ...editForm, photo_url: publicUrlData.publicUrl });
+      
+    } catch (error: any) {
+      alert('❌ បរាជ័យក្នុងការបញ្ចូលរូបភាព៖ ' + error.message);
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   const handleUpdate = async () => {
     if (!selectedHome || !selectedHome.id) return;
     const finalFee = editForm.monthly_fee === '' ? 0 : Number(editForm.monthly_fee);
 
-    const { error } = await supabaseClient.from('households').update({ custom_id: editForm.custom_id, customer_name: editForm.customer_name, monthly_fee: finalFee, zone: editForm.zone, status_color: editForm.status_color, payment_month: editForm.payment_month }).eq('id', selectedHome.id);
+    const { error } = await supabaseClient.from('households').update({ 
+        custom_id: editForm.custom_id, 
+        customer_name: editForm.customer_name, 
+        monthly_fee: finalFee, 
+        zone: editForm.zone, 
+        status_color: editForm.status_color, 
+        payment_month: editForm.payment_month,
+        photo_url: editForm.photo_url // 🚀 ធានាថារក្សាទុក URL រូបភាពចូល Database ផងដែរ
+    }).eq('id', selectedHome.id);
+
     if (!error) { 
       let colorHex = editForm.status_color === 'blue' ? '#2563eb' : editForm.status_color === 'red' ? '#dc2626' : editForm.status_color === 'black' ? '#020617' : '#f59e0b';
       updateMarkerColorLocally(selectedHome.id, colorHex); 
@@ -386,11 +462,13 @@ export default function Map() {
     if (insertErr) { alert(`❌ មានបញ្ហាក្នុងការកត់ត្រាការបង់ប្រាក់! Error: ${insertErr.message}`); return; }
 
     const nextMonthIdx = (lastPaidMonthIndex + 1) % 12; const nextMonthStr = monthsList[nextMonthIdx];
-    const { error } = await supabaseClient.from('households').update({ status_color: 'blue', payment_month: nextMonthStr }).eq('id', selectedHome.id);
+    
+    // 🚀 Update status និង រក្សាទុករូបភាពដែលទើបបញ្ចូល ព្រមគ្នាតែម្តងពេលបង់ប្រាក់
+    const { error } = await supabaseClient.from('households').update({ status_color: 'blue', payment_month: nextMonthStr, photo_url: editForm.photo_url }).eq('id', selectedHome.id);
 
     if (!error) {
       alert('✅ ការបង់ប្រាក់ទទួលបានជោគជ័យ!'); updateMarkerColorLocally(selectedHome.id, '#2563eb'); 
-      const updatedHome = { ...selectedHome, status_color: 'blue', payment_month: nextMonthStr };
+      const updatedHome = { ...selectedHome, status_color: 'blue', payment_month: nextMonthStr, photo_url: editForm.photo_url };
       setAllData(prev => prev.map(item => item.id === selectedHome.id ? updatedHome : item));
       setSelectedHome(null); 
     } else { alert(`❌ បរាជ័យក្នុងការ Update ស្ថានភាពផ្ទះ! Error: ${error.message}`); }
@@ -453,7 +531,6 @@ export default function Map() {
 
   const openReport = async () => {
     setActiveView('report');
-    // 🚀 អនុញ្ញាតឱ្យ Fetch តែម្តង ពេលចូល Report ទប់ស្កាត់ការស៊ី Quota!
     if (paymentsData.length === 0) {
         let query = supabaseClient.from('payments').select('*');
         if (currentUserRef.current && currentUserRef.current.role !== 'super_admin') { query = query.eq('zone', currentUserRef.current.name); }
@@ -483,8 +560,6 @@ export default function Map() {
         let query = supabaseClient.from('households').update({ status_color: val });
         if (currentUserRef.current.role !== 'super_admin') query = query.eq('zone', currentUserRef.current.name); else if (reportZone) query = query.eq('zone', reportZone); else query = query.not('id', 'is', null); 
         await query; 
-        
-        // 🚀 Update Local Map លែង Fetch ថ្មី
         let colorHex = val === 'blue' ? '#2563eb' : val === 'red' ? '#dc2626' : val === 'black' ? '#020617' : '#f59e0b';
         pointsLayer.current?.eachLayer((layer: any) => {
             const h = allDataRef.current.find(d => d.id === layer.options.dbId);
@@ -498,13 +573,11 @@ export default function Map() {
                 layer.setStyle({ fillColor: colorHex });
             }
         });
-
         setAllData(prev => prev.map(item => {
             if (currentUserRef.current.role !== 'super_admin' && item.zone !== currentUserRef.current.name) return item;
             if (reportZone && item.zone !== reportZone) return item;
             return { ...item, status_color: val };
         }));
-
         e.target.value = "";
         alert('✅ ធ្វើបច្ចុប្បន្នភាពស្ថានភាពជោគជ័យ!');
     }
@@ -768,7 +841,35 @@ export default function Map() {
                 <button onClick={() => setSelectedHome(null)} className="text-slate-400 hover:text-rose-500 cursor-pointer"><X size={20} /></button>
             </div>
             <div className="p-5 flex flex-col gap-4 overflow-y-auto hide-scrollbar bg-white pb-10">
-                <div className="flex flex-col gap-1"><span className="text-[11px] text-slate-700 font-bold flex items-center gap-1"><Camera size={14} /> រូបថត៖</span><div className="w-full h-32 bg-slate-100 rounded-lg overflow-hidden border border-slate-200 flex items-center justify-center">{editForm.photo_url ? ( <img src={editForm.photo_url} className="w-full h-full object-cover" alt="Customer" /> ) : ( <span className="text-slate-400 text-xs font-bold">គ្មានរូបថត</span> )}</div></div>
+                
+                {/* 🚀 កន្លែងសម្រាប់ Upload រូបថតអតិថិជន */}
+                <div className="flex flex-col gap-1">
+                    <span className="text-[11px] text-slate-700 font-bold flex items-center gap-1">
+                        <Camera size={14} /> រូបថត (ចុចដើម្បីបញ្ចូល)៖
+                    </span>
+                    <label className="w-full h-32 bg-slate-100 rounded-lg overflow-hidden border border-slate-200 flex flex-col items-center justify-center relative cursor-pointer hover:bg-slate-200 transition-colors">
+                        {isUploading ? (
+                            <div className="flex flex-col items-center text-indigo-500">
+                                <Loader2 className="animate-spin mb-2" size={24} />
+                                <span className="text-xs font-bold">កំពុងបញ្ជូនរូបភាព...</span>
+                            </div>
+                        ) : editForm.photo_url ? (
+                            <>
+                                <img src={editForm.photo_url} className="w-full h-full object-cover" alt="Customer" />
+                                <div className="absolute bottom-2 right-2 bg-black/60 text-white p-1.5 rounded-lg backdrop-blur-md shadow-md">
+                                    <Camera size={16} />
+                                </div>
+                            </>
+                        ) : (
+                            <div className="flex flex-col items-center text-slate-400">
+                                <Camera size={24} className="mb-1" />
+                                <span className="text-xs font-bold text-slate-500">ចុចទីនេះដើម្បីបញ្ចូលរូបថត</span>
+                            </div>
+                        )}
+                        <input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} disabled={isUploading} />
+                    </label>
+                </div>
+
                 <div className="flex flex-col gap-1.5"><span className="text-[11px] text-slate-700 font-bold">លេខកូដផ្ទះ៖</span><input type="text" value={editForm.custom_id} onChange={(e) => setEditForm({...editForm, custom_id: e.target.value})} className="w-full px-3 py-2.5 text-sm font-bold text-slate-800 bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-500 transition-colors" /></div>
                 <div className="flex flex-col gap-1.5"><span className="text-[11px] text-slate-700 font-bold">ឈ្មោះអតិថិជន (ម្ចាស់ហាង/សំអាង)៖</span><input type="text" value={editForm.customer_name} onChange={(e) => setEditForm({...editForm, customer_name: e.target.value})} className="w-full px-3 py-2.5 text-sm font-bold text-slate-800 bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-500 transition-colors" /></div>
                 
