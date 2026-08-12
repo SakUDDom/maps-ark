@@ -4,13 +4,37 @@ import 'leaflet/dist/leaflet.css';
 import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css';
 import L from 'leaflet';
 import '@geoman-io/leaflet-geoman-free';
-import { MapPin, Eraser, Hexagon, Scissors, RotateCw, Search, Slash, Move, LogIn, LogOut, PieChart, Ban, X, Spline, Map as MapIcon, Clock, CheckCircle, RotateCcw, Road, Monitor, Smartphone, Navigation, Loader2, Layers } from 'lucide-react';
+import { MapPin, Eraser, Hexagon, Scissors, RotateCw, Search, Slash, Move, LogIn, LogOut, PieChart, Ban, X, Spline, Map as MapIcon, Clock, CheckCircle, RotateCcw, Road, Monitor, Smartphone, Navigation, Loader2, Layers, Building } from 'lucide-react';
 import { supabaseClient } from '../utils/supabase';
 
 import LoginModal from './LoginModal';
 import BillPrint from './BillPrint';
 import CustomerDetail from './CustomerDetail';
 import ReportDashboard from './ReportDashboard';
+
+function isPointInPoly(point: [number, number], vs: Array<[number, number]>) {
+  if (!vs || vs.length === 0) return false;
+  const x = point[0], y = point[1];
+  let inside = false;
+  for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
+    const xi = vs[i][0], yi = vs[i][1];
+    const xj = vs[j][0], yj = vs[j][1];
+    const intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+function extractPolyCoords(geojson: any) {
+  if (!geojson) return null;
+  if (geojson.geometry && geojson.geometry.coordinates) {
+    return geojson.geometry.coordinates[0];
+  }
+  if (geojson.coordinates) {
+    return geojson.coordinates[0];
+  }
+  return null;
+}
 
 if (typeof window !== 'undefined' && !(L.Draggable.prototype as any)._isRotatedPatched) {
   (L.Draggable.prototype as any)._isRotatedPatched = true;
@@ -19,6 +43,8 @@ if (typeof window !== 'undefined' && !(L.Draggable.prototype as any)._isRotatedP
   (L.Draggable.prototype as any)._onMove = function (e: any) {
     if (!this._enabled) { return; }
     
+    this._moved = true; 
+
     const rotation = (window as any)._currentMapRotation || 0;
     const scale = (window as any)._currentMapScale || 1.6;
 
@@ -94,6 +120,7 @@ export default function Map() {
   const locationMarkerRef = useRef<L.Marker | null>(null);
 
   const activeDrawTool = useRef<string>('point'); 
+  const borderModeRef = useRef<'zone' | 'admin'>('zone'); 
 
   const [currentUser, setCurrentUser] = useState<any>(null); 
   const [showLoginModal, setShowLoginModal] = useState(true);
@@ -127,6 +154,8 @@ export default function Map() {
   const [pointToggle, setPointToggle] = useState(false);
   const [polygonToggle, setPolygonToggle] = useState(false);
   const [roadToggle, setRoadToggle] = useState(false);
+  
+  // 🚀 កំណត់តម្លៃដើមជា OFF (false) តាមសំណើ
   const [borderLive, setBorderLive] = useState(false);
 
   const [mapRotation, setMapRotation] = useState(0);
@@ -138,11 +167,13 @@ export default function Map() {
   const deviceChoiceRef = useRef<'pc' | 'mobile' | null>(null);
   const hasFetchedRef = useRef(false);
 
-  const monthsList = ['ខែមករា', 'ខែកកុម្ភៈ', 'ខែមីនា', 'ខែមេសា', 'ខែឧសភា', 'ខែមិថុនា', 'ខែកក្កដា', 'ខែសីហា', 'ខែកញ្ញា', 'ខែតុលា', 'ខែវិច្ឆិកា', 'ខែធ្នូ'];
+  const monthsList = ['ខែមករា', 'ខែកកុម្ភៈ', 'ខែមីនា', 'ខែមេសា', 'ខែឧសភា', 'ខែមិថុនា', 'ខែកក្កដា', 'ខែសីហា', 'ខែតុលា', 'ខែវិច្ឆិកា', 'ខែធ្នូ'];
 
   useEffect(() => {
-    deviceChoiceRef.current = deviceChoice;
-  }, [deviceChoice]);
+    currentUserRef.current = currentUser;
+  }, [currentUser]);
+
+  useEffect(() => { deviceChoiceRef.current = deviceChoice; }, [deviceChoice]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -155,9 +186,28 @@ export default function Map() {
     const checkSession = async () => {
       const { data: { session } } = await supabaseClient.auth.getSession();
       if (session) {
-        const { data: profile } = await supabaseClient.from('Profiles_Access').select('role, zone, can_edit_roof, can_edit_road, can_edit_border').eq('id', session.user.id).maybeSingle();
-        const roleStr = profile?.role ? profile.role.toLowerCase().trim().replace(/\s+/g, '_') : 'user';
-        const userObj = { id: session.user.id, name: profile?.zone || session.user.email, zone: profile?.zone || '', role: roleStr, can_edit_roof: profile?.can_edit_roof || false, can_edit_road: profile?.can_edit_road || false, can_edit_border: profile?.can_edit_border || false };
+        let profileRes = await supabaseClient.from('profiles_access').select('role, zone, can_edit_roof, can_edit_road, can_edit_border').eq('id', session.user.id).maybeSingle();
+        
+        if (!profileRes.data) {
+          profileRes = await supabaseClient.from('Profiles_Access').select('role, zone, can_edit_roof, can_edit_road, can_edit_border').eq('id', session.user.id).maybeSingle();
+        }
+
+        const profile = profileRes.data;
+        let roleStr = profile?.role ? profile.role.toLowerCase().trim().replace(/\s+/g, '_') : 'user';
+
+        if (session.user.email === 'god@god.com') {
+          roleStr = 'super_admin';
+        }
+
+        const userObj = { 
+          id: session.user.id, 
+          name: profile?.zone || session.user.email, 
+          zone: profile?.zone || '', 
+          role: roleStr, 
+          can_edit_roof: profile?.can_edit_roof ?? true, 
+          can_edit_road: profile?.can_edit_road ?? true, 
+          can_edit_border: profile?.can_edit_border ?? true 
+        };
         setCurrentUser(userObj);
         currentUserRef.current = userObj;
         setShowLoginModal(false);
@@ -223,7 +273,7 @@ export default function Map() {
         mapInstance.current.on('locationfound', (e: any) => {
             if (!locationMarkerRef.current) {
                 const liveIcon = L.divIcon({ className: 'clear-default-icon', html: `<div class="live-location-pulse"></div><div class="live-location-dot"></div>`, iconSize: [28, 28], iconAnchor: [14, 14] });
-                locationMarkerRef.current = L.marker(e.latlng, { icon: liveIcon }).addTo(mapInstance.current!);
+                locationMarkerRef.current = L.marker(e.latlng, { icon: liveIcon, pane: 'pointsPane' }).addTo(mapInstance.current!);
                 mapInstance.current?.flyTo(e.latlng, 17, { animate: true, duration: 1.5 });
             } else { locationMarkerRef.current.setLatLng(e.latlng); }
         });
@@ -238,15 +288,11 @@ export default function Map() {
       if (deviceChoice === 'mobile' && mapInstance.current) mapInstance.current.locate({ setView: true, maxZoom: 18, enableHighAccuracy: true });
   };
 
-  const resetMapNorth = () => {
-    setMapRotation(0);
-  };
+  const resetMapNorth = () => { setMapRotation(0); };
 
   const addHouseholdToMap = (h: any) => {
     let layer: any;
     let colorHex = h.status_color === 'blue' ? '#2563eb' : h.status_color === 'red' ? '#dc2626' : h.status_color === 'black' ? '#020617' : '#f59e0b';
-
-    // 🚀 កែសម្រួលទំហំ Point ឱ្យតូចត្រឹមត្រូវ Fit ស្អាតលើអេក្រង់
     const isMobileChoice = deviceChoiceRef.current === 'mobile';
     const pointRadius = isMobileChoice ? 4.5 : 5;
 
@@ -256,20 +302,44 @@ export default function Map() {
         fillColor: colorHex, 
         color: '#ffffff', 
         weight: 1.2, 
-        fillOpacity: 0.95 
+        fillOpacity: 0.95,
+        pane: 'pointsPane'
       });
       if (pointsLayer.current) { layer.options.dbId = h.id; layer.options.dbType = 'household'; layer.addTo(pointsLayer.current); }
     } 
     else if (h.shape_type === 'polygon' && h.geojson) {
-      layer = L.geoJSON(h.geojson, { style: { color: '#ffffff', weight: 1.5, fillColor: colorHex, fillOpacity: 0.85 } });
+      layer = L.geoJSON(h.geojson, { pane: 'polygonsPane', style: { color: '#ffffff', weight: 1.5, fillColor: colorHex, fillOpacity: 0.85 } });
       if (polygonsLayer.current) { layer.eachLayer((l: any) => { l.options.dbId = h.id; l.options.dbType = 'household'; }); layer.addTo(polygonsLayer.current); }
     }
 
     if (layer) {
-      layer.on('click', () => {
-        const freshData = allDataRef.current.find((item: any) => item.id === h.id) || h;
+      layer.on('click', async () => {
+        let freshData = allDataRef.current.find((item: any) => item.id === h.id) || h;
+
+        let detectedZone = freshData.zone || '';
+        if (!detectedZone && bordersLayer.current && freshData.lng && freshData.lat) {
+          bordersLayer.current.eachLayer((bLayer: any) => {
+            const bGeo = bLayer.toGeoJSON ? bLayer.toGeoJSON() : bLayer.options?.geojson;
+            const bZone = bLayer.options?.zoneName || bGeo?.properties?.zone;
+            const isAdmin = bZone?.startsWith(' Admin:');
+            
+            if (bZone && !isAdmin) {
+              const polyCoords = extractPolyCoords(bGeo);
+              if (polyCoords && isPointInPoly([freshData.lng, freshData.lat], polyCoords)) {
+                detectedZone = bZone.replace(' Admin:', '').trim();
+              }
+            }
+          });
+
+          if (detectedZone) {
+            freshData = { ...freshData, zone: detectedZone };
+            await supabaseClient.from('households').update({ zone: detectedZone }).eq('id', freshData.id);
+            setAllData(prev => prev.map(item => item.id === freshData.id ? freshData : item));
+          }
+        }
+
         setSelectedHome(freshData); 
-        setEditForm({ custom_id: freshData.custom_id || '', customer_name: freshData.customer_name || '', monthly_fee: freshData.monthly_fee || 0, zone: freshData.zone || '', status_color: freshData.status_color || 'yellow', payment_month: freshData.payment_month || 'ខែមករា', photo_url: freshData.photo_url || '' }); 
+        setEditForm({ custom_id: freshData.custom_id || '', customer_name: freshData.customer_name || '', monthly_fee: freshData.monthly_fee || 0, zone: freshData.zone || detectedZone || '', status_color: freshData.status_color || 'yellow', payment_month: freshData.payment_month || 'ខែមករា', photo_url: freshData.photo_url || '' }); 
         setPayMonth(freshData.payment_month || 'ខែមករា'); setPayNumMonths(1); setIsManualEditOpen(false); 
       });
     }
@@ -284,7 +354,7 @@ export default function Map() {
       if(r.road_type === 'Concrete road') roadColor = '#f6d91e';
       if(r.road_type === 'Asphalt road') roadColor = '#e01ae3';
 
-      const layer = L.geoJSON(r.geojson, { style: { color: roadColor, weight: 6, opacity: 0.9 } }); 
+      const layer = L.geoJSON(r.geojson, { pane: 'roadsPane', style: { color: roadColor, weight: 6, opacity: 0.9 } }); 
       layer.bindTooltip(`<div class="text-center unrotate-element"><b>${r.name || 'មិនមានឈ្មោះផ្លូវ'}</b><br><span class="text-xs text-slate-500">${r.road_type || 'Land road'} | ទំហំ: ${r.width || 'មិនបញ្ជាក់'}</span></div>`, {sticky: true, className: 'font-bold'});
       layer.eachLayer((l: any) => { 
         l.options.dbId = r.id; l.options.dbType = 'road'; 
@@ -296,19 +366,62 @@ export default function Map() {
 
   const addBorderToMap = (b: any) => {
     if (b.geojson) {
-      const layer = L.geoJSON(b.geojson, { style: { color: '#ec4899', weight: 5, opacity: 0.8, dashArray: '8, 8', fillOpacity: 0.1 } }); 
-      layer.bindTooltip(`<div class="unrotate-element">ព្រំដែនតំបន់៖ <b>${b.zone || 'មិនបញ្ជាក់'}</b></div>`, { sticky: true, className: 'font-bold text-sm bg-white px-2 py-1 shadow-md border border-slate-200 rounded' });
+      const isAdmin = b.border_type === 'admin' || b.zone?.startsWith(' Admin:');
+      const strokeColor = isAdmin ? '#8b5cf6' : '#ec4899';
+      const dashStyle = isAdmin ? undefined : '6, 6';
+
+      const layer = L.geoJSON(b.geojson, { 
+        pane: 'bordersPane',
+        interactive: true,
+        style: { color: strokeColor, weight: 4, opacity: 0.85, dashArray: dashStyle, fillColor: strokeColor, fillOpacity: 0.15 } 
+      }); 
+
+      const displayZone = b.zone?.replace(' Admin:', '') || '';
+      
+      const watermarkClass = isAdmin ? 'admin-watermark' : 'zone-watermark';
+      const iconPrefix = isAdmin ? '🏙️' : '📍';
+      const labelText = `${iconPrefix} ${displayZone}`;
+      
+      layer.bindTooltip(`<div class="unrotate-element ${watermarkClass}">${labelText}</div>`, { 
+        permanent: true, 
+        direction: 'center', 
+        className: 'clear-tooltip-bg' 
+      });
+
+      (layer as any).options.dbId = b.id;
+      (layer as any).options.dbType = 'border';
+      (layer as any).options.zoneName = b.zone;
+
       layer.eachLayer((l: any) => { 
-        l.options.dbId = b.id; l.options.dbType = 'border'; 
-        l.on('dblclick', async () => {
+        l.options.dbId = b.id; 
+        l.options.dbType = 'border'; 
+        l.options.zoneName = b.zone;
+        (l as any).pmIgnore = false;
+
+        l.on('dblclick', async (e: any) => {
+          if (e && e.originalEvent) {
+            L.DomEvent.stopPropagation(e.originalEvent);
+          }
           if(!currentUserRef.current) return;
-          const newZoneName = prompt("កែប្រែឈ្មោះតំបន់ (Zone) សម្រាប់ព្រំដែននេះ៖", b.zone);
-          if (newZoneName && newZoneName.trim() !== "" && newZoneName !== b.zone) {
-              await supabaseClient.from('zone_borders').update({ zone: newZoneName.trim() }).eq('id', b.id);
-              l.bindTooltip(`<div class="unrotate-element">ព្រំដែនតំបន់៖ <b>${newZoneName.trim()}</b></div>`, { sticky: true, className: 'font-bold text-sm bg-white px-2 py-1 shadow-md border border-slate-200 rounded' });
+
+          const newZoneName = prompt("កែប្រែឈ្មោះព្រំដែន/តំបន់៖", displayZone);
+          if (newZoneName && newZoneName.trim() !== "" && newZoneName !== displayZone) {
+              const savedZoneName = isAdmin ? ` Admin: ${newZoneName.trim()}` : newZoneName.trim();
+              await supabaseClient.from('zone_borders').update({ zone: savedZoneName }).eq('id', b.id);
+              b.zone = savedZoneName;
+              l.options.zoneName = savedZoneName;
+              
+              const updatedLabel = `${iconPrefix} ${newZoneName.trim()}`;
+              layer.unbindTooltip();
+              layer.bindTooltip(`<div class="unrotate-element ${watermarkClass}">${updatedLabel}</div>`, { 
+                permanent: true, 
+                direction: 'center', 
+                className: 'clear-tooltip-bg' 
+              });
           }
         });
       });
+
       if(bordersLayer.current) bordersLayer.current.addLayer(layer);
     }
   };
@@ -351,8 +464,21 @@ export default function Map() {
       mapInstance.current = L.map(mapRef.current, { 
         zoomControl: false, 
         preferCanvas: true,
-        renderer: customRenderer
+        renderer: customRenderer,
+        clickTolerance: 10
       }).setView([11.99, 105.46], 15);
+
+      mapInstance.current.createPane('bordersPane');
+      mapInstance.current.getPane('bordersPane')!.style.zIndex = '350';
+
+      mapInstance.current.createPane('roadsPane');
+      mapInstance.current.getPane('roadsPane')!.style.zIndex = '400';
+
+      mapInstance.current.createPane('polygonsPane');
+      mapInstance.current.getPane('polygonsPane')!.style.zIndex = '450';
+
+      mapInstance.current.createPane('pointsPane');
+      mapInstance.current.getPane('pointsPane')!.style.zIndex = '650';
 
       L.control.zoom({ position: 'bottomright' }).addTo(mapInstance.current);
       L.tileLayer('https://{s}.google.com/vt/lyrs=s,h&x={x}&y={y}&z={z}', { maxZoom: 21, subdomains: ['mt0', 'mt1', 'mt2', 'mt3'] }).addTo(mapInstance.current);
@@ -388,17 +514,85 @@ export default function Map() {
             return;
         } 
         else if (shapeType === 'border') {
-            const zoneName = prompt("សូមបញ្ចូលឈ្មោះតំបន់ (Zone) សម្រាប់ព្រំដែននេះ៖");
+            const isZoneMode = borderModeRef.current === 'zone';
+            const promptTitle = isZoneMode 
+              ? "សូមបញ្ចូលឈ្មោះតំបន់ប្រមូល (Zone Collector Name) ឧទាហរណ៍៖ Deth" 
+              : "សូមបញ្ចូលឈ្មោះព្រំប្រទល់រដ្ឋបាល/ក្រុង/ខេត្ត ឧទាហរណ៍៖ ក្រុងកំពង់ចាម";
+            
+            const borderTitle = prompt(promptTitle);
             mapInstance.current?.removeLayer(e.layer);
-            if (!zoneName) return; 
-            const { data } = await supabaseClient.from('zone_borders').insert({ geojson: geojson, zone: zoneName }).select().single();
-            if(data) { addBorderToMap(data); setBorderLive(true); }
+            if (!borderTitle || !borderTitle.trim()) return; 
+
+            const borderTypeStr = isZoneMode ? 'zone' : 'admin';
+            const savedName = isZoneMode ? borderTitle.trim() : ` Admin: ${borderTitle.trim()}`;
+
+            let data = null;
+            const primaryRes = await supabaseClient.from('zone_borders').insert({ 
+              geojson: geojson, 
+              zone: savedName,
+              border_type: borderTypeStr
+            }).select().single();
+
+            if (primaryRes.error) {
+              const fallbackRes = await supabaseClient.from('zone_borders').insert({ 
+                geojson: geojson, 
+                zone: savedName
+              }).select().single();
+              data = fallbackRes.data;
+            } else {
+              data = primaryRes.data;
+            }
+
+            if(data) { 
+              setBorderLive(true); 
+              addBorderToMap(data); 
+
+              if (isZoneMode) {
+                const polyCoords = extractPolyCoords(geojson);
+                if (polyCoords) {
+                  const pointsToUpdate: string[] = [];
+                  allDataRef.current.forEach((h: any) => {
+                    if (h.lng && h.lat && isPointInPoly([h.lng, h.lat], polyCoords)) {
+                      pointsToUpdate.push(h.id);
+                    }
+                  });
+
+                  if (pointsToUpdate.length > 0) {
+                    await supabaseClient.from('households').update({ zone: borderTitle.trim() }).in('id', pointsToUpdate);
+                    
+                    setAllData(prev => prev.map(item => pointsToUpdate.includes(item.id) ? { ...item, zone: borderTitle.trim() } : item));
+                    
+                    pointsLayer.current?.clearLayers();
+                    allDataRef.current.map(item => pointsToUpdate.includes(item.id) ? { ...item, zone: borderTitle.trim() } : item).forEach(addHouseholdToMap);
+
+                    alert(`✅ បានភ្ជាប់ Point ចំនួន ${pointsToUpdate.length} ទៅកាន់តំបន់ប្រមូល « ${borderTitle.trim()} » រួចរាល់!`);
+                  }
+                }
+              }
+            } else {
+              alert('❌ មានបញ្ហាក្នុងការរក្សាទុកព្រំដែនទៅកាន់ Database');
+            }
         } 
         else {
             let dbShape = shapeType === 'polygon' ? 'polygon' : 'point';
             mapInstance.current?.removeLayer(e.layer);
-            const userZone = currentUserRef.current?.role !== 'super_admin' ? currentUserRef.current?.name : '';
-            const { data } = await supabaseClient.from('households').insert({ lat: center.lat, lng: center.lng, custom_id: customId, status_color: 'yellow', shape_type: dbShape, geojson: geojson, payment_month: 'ខែមករា', monthly_fee: 10000, zone: userZone }).select().single();
+            
+            let autoZone = currentUserRef.current?.role !== 'super_admin' ? currentUserRef.current?.name : '';
+            if (bordersLayer.current) {
+              bordersLayer.current.eachLayer((bLayer: any) => {
+                const bData = bLayer.toGeoJSON ? bLayer.toGeoJSON() : bLayer.options?.geojson;
+                const bZone = bLayer.options?.zoneName || bData?.properties?.zone;
+                const isAdmin = bZone?.startsWith(' Admin:');
+                if (bZone && !isAdmin) {
+                  const polyCoords = extractPolyCoords(bData);
+                  if (polyCoords && isPointInPoly([center.lng, center.lat], polyCoords)) {
+                    autoZone = bZone.replace(' Admin:', '').trim();
+                  }
+                }
+              });
+            }
+
+            const { data } = await supabaseClient.from('households').insert({ lat: center.lat, lng: center.lng, custom_id: customId, status_color: 'yellow', shape_type: dbShape, geojson: geojson, payment_month: 'ខែមករា', monthly_fee: 10000, zone: autoZone }).select().single();
             if(data) { 
                 setAllData(prev => [...prev, data]); 
                 addHouseholdToMap(data); 
@@ -411,15 +605,36 @@ export default function Map() {
 
       mapInstance.current.on('pm:remove', async (e: any) => {
         if (!currentUserRef.current) return; 
-        const id = e.layer.options.dbId; const dbType = e.layer.options.dbType; if (!id) return;
-        if (dbType === 'road') await supabaseClient.from('roads').delete().eq('id', id);
-        else if (dbType === 'border') await supabaseClient.from('zone_borders').delete().eq('id', id);
-        else await supabaseClient.from('households').delete().eq('id', id);
+        
+        const targetLayer = e.layer;
+        const id = targetLayer.options?.dbId || targetLayer.options?.parentLayer?.options?.dbId;
+        const dbType = targetLayer.options?.dbType || targetLayer.options?.parentLayer?.options?.dbType;
+
+        if (!id) return;
+
+        if (dbType === 'road') {
+          await supabaseClient.from('roads').delete().eq('id', id);
+        }
+        else if (dbType === 'border') {
+          const { error } = await supabaseClient.from('zone_borders').delete().eq('id', id);
+          if (!error) {
+            alert('✅ បានលុបព្រំដែនជោគជ័យ!');
+          } else {
+            alert('❌ មិនអាចលុបព្រំដែនបានទេ៖ ' + error.message);
+          }
+        }
+        else {
+          await supabaseClient.from('households').delete().eq('id', id);
+        }
       });
 
       mapInstance.current.on('pm:update', async (e: any) => {
         if (!currentUserRef.current) return; 
-        const id = e.layer.options.dbId; const dbType = e.layer.options.dbType; if (!id) return; const geojson = e.layer.toGeoJSON();
+        const id = e.layer.options?.dbId; 
+        const dbType = e.layer.options?.dbType; 
+        if (!id) return; 
+        const geojson = e.layer.toGeoJSON();
+
         if (dbType === 'road') await supabaseClient.from('roads').update({ geojson: geojson }).eq('id', id);
         else if (dbType === 'border') await supabaseClient.from('zone_borders').update({ geojson: geojson }).eq('id', id);
         else {
@@ -475,8 +690,27 @@ export default function Map() {
   const drawPoint = () => { if(checkPermission()){ activeDrawTool.current = 'point'; (mapInstance.current?.pm as any)?.disableDraw(); (mapInstance.current?.pm as any)?.enableDraw('Marker', { snappable: true }); }};
   const drawPolygon = () => { if(checkPermission()){ activeDrawTool.current = 'polygon'; (mapInstance.current?.pm as any)?.disableDraw(); (mapInstance.current?.pm as any)?.enableDraw('Polygon', { snappable: true }); }};
   const drawRoad = () => { if(checkPermission()){ activeDrawTool.current = 'road'; (mapInstance.current?.pm as any)?.disableDraw(); (mapInstance.current?.pm as any)?.enableDraw('Line', { snappable: true }); }};
-  const drawBorder = () => { if(checkPermission()){ activeDrawTool.current = 'border'; (mapInstance.current?.pm as any)?.disableDraw(); (mapInstance.current?.pm as any)?.enableDraw('Polygon', { snappable: true }); }};
   
+  const drawZoneBorder = () => { 
+    if(checkPermission()){ 
+      activeDrawTool.current = 'border'; 
+      borderModeRef.current = 'zone';
+      setBorderLive(true); 
+      (mapInstance.current?.pm as any)?.disableDraw(); 
+      (mapInstance.current?.pm as any)?.enableDraw('Polygon', { snappable: true }); 
+    }
+  };
+
+  const drawAdminBorder = () => { 
+    if(checkPermission()){ 
+      activeDrawTool.current = 'border'; 
+      borderModeRef.current = 'admin';
+      setBorderLive(true); 
+      (mapInstance.current?.pm as any)?.disableDraw(); 
+      (mapInstance.current?.pm as any)?.enableDraw('Polygon', { snappable: true }); 
+    }
+  };
+
   const toggleEdit = () => { if(checkPermission()) (mapInstance.current?.pm as any)?.toggleGlobalEditMode(); };
   const toggleCut = () => { if(checkPermission()) (mapInstance.current?.pm as any)?.toggleGlobalCutMode(); };
   const toggleRotate = () => { if(checkPermission()) (mapInstance.current?.pm as any)?.toggleGlobalRotateMode(); };
@@ -704,9 +938,34 @@ export default function Map() {
         .live-location-pulse { width: 40px; height: 40px; background-color: rgba(37, 99, 235, 0.4); border-radius: 50%; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1; animation: pulse 2s infinite ease-in-out; }
         @keyframes pulse { 0% { transform: translate(-50%, -50%) scale(0.5); opacity: 1; } 100% { transform: translate(-50%, -50%) scale(1.5); opacity: 0; } }
         
-        .unrotate-element, .leaflet-tooltip {
+        .unrotate-element {
           transform: rotate(${-mapRotation}deg) !important;
           transition: transform 0.1s ease-out;
+        }
+
+        .clear-tooltip-bg {
+          background: transparent !important;
+          border: none !important;
+          box-shadow: none !important;
+          pointer-events: none !important;
+        }
+
+        .zone-watermark {
+          font-size: 15px;
+          font-weight: 900;
+          color: rgba(255, 255, 255, 0.88);
+          text-shadow: 0 0 6px rgba(236, 72, 153, 0.95), 0 0 10px rgba(0, 0, 0, 0.95);
+          letter-spacing: 0.5px;
+          pointer-events: none;
+        }
+
+        .admin-watermark {
+          font-size: 18px;
+          font-weight: 900;
+          color: rgba(233, 213, 255, 0.9);
+          text-shadow: 0 0 6px rgba(139, 92, 246, 0.95), 0 0 10px rgba(0, 0, 0, 0.95);
+          letter-spacing: 1px;
+          pointer-events: none;
         }
 
         @media print {
@@ -810,15 +1069,26 @@ export default function Map() {
             {(!currentUser || currentUser?.role === 'super_admin' || currentUser?.can_edit_border) && (
                 <div className="bg-white/90 backdrop-blur-xl border border-white shadow-lg rounded-3xl p-5">
                 <h3 className="text-center font-black text-slate-700 text-sm border-b-2 border-indigo-500/20 pb-3 mb-4">🌐 ព្រំដែន (Border)</h3>
+                
+                <div className="grid grid-cols-2 gap-2 mb-4">
+                  <button onClick={drawZoneBorder} className="flex flex-col items-center justify-center p-2.5 bg-pink-50 border border-pink-200 hover:bg-pink-100 rounded-xl transition-all text-pink-700 cursor-pointer">
+                    <Hexagon size={20} className="mb-1 text-pink-600" />
+                    <span className="text-[10px] font-bold">តំបន់ប្រមូល</span>
+                  </button>
+                  <button onClick={drawAdminBorder} className="flex flex-col items-center justify-center p-2.5 bg-purple-50 border border-purple-200 hover:bg-purple-100 rounded-xl transition-all text-purple-700 cursor-pointer">
+                    <Building size={20} className="mb-1 text-purple-600" />
+                    <span className="text-[10px] font-bold">ព្រំប្រទល់រដ្ឋបាល</span>
+                  </button>
+                </div>
+
                 <div className="flex justify-between mb-5">
-                    <button onClick={drawBorder} className="flex flex-col items-center gap-1 cursor-pointer text-indigo-600 hover:scale-110"><Hexagon size={20} /><span className="text-[10px] font-bold text-slate-600">Add</span></button>
-                    <button onClick={toggleEdit} className="flex flex-col items-center gap-1 cursor-pointer text-amber-500 hover:scale-110"><MapPin size={20} /><span className="text-[10px] font-bold text-slate-600">Edite</span></button>
-                    <button onClick={toggleCut} className="flex flex-col items-center gap-1 cursor-pointer text-sky-500 hover:scale-110"><Scissors size={20} /><span className="text-[10px] font-bold text-slate-600">Cut</span></button>
-                    <button onClick={toggleRemove} className="flex flex-col items-center gap-1 cursor-pointer text-rose-500 hover:scale-110"><Eraser size={20} /><span className="text-[10px] font-bold text-slate-600">Remove</span></button>
-                    <button onClick={toggleRotate} className="flex flex-col items-center gap-1 cursor-pointer text-emerald-500 hover:scale-110"><RotateCw size={20} /><span className="text-[10px] font-bold text-slate-600">Rotate</span></button>
+                    <button onClick={toggleEdit} className="flex flex-col items-center gap-1 cursor-pointer text-amber-500 hover:scale-110"><MapPin size={18} /><span className="text-[10px] font-bold text-slate-600">Edit</span></button>
+                    <button onClick={toggleCut} className="flex flex-col items-center gap-1 cursor-pointer text-sky-500 hover:scale-110"><Scissors size={18} /><span className="text-[10px] font-bold text-slate-600">Cut</span></button>
+                    <button onClick={toggleRemove} className="flex flex-col items-center gap-1 cursor-pointer text-rose-500 hover:scale-110"><Eraser size={18} /><span className="text-[10px] font-bold text-slate-600">Remove</span></button>
+                    <button onClick={toggleRotate} className="flex flex-col items-center gap-1 cursor-pointer text-emerald-500 hover:scale-110"><RotateCw size={18} /><span className="text-[10px] font-bold text-slate-600">Rotate</span></button>
                 </div>
                 <div className="flex flex-col gap-3">
-                    <div className="flex justify-between items-center"><span className="text-[11px] font-bold text-slate-600 flex items-center gap-2"><Spline className="text-purple-500" size={16} /> ព្រំដែនគូសផ្ទាល់</span><Toggle enabled={borderLive} setEnabled={setBorderLive} /></div>
+                    <div className="flex justify-between items-center"><span className="text-[11px] font-bold text-slate-600 flex items-center gap-2"><Spline className="text-purple-500" size={16} /> បើកបង្ហាញព្រំដែន</span><Toggle enabled={borderLive} setEnabled={setBorderLive} /></div>
                 </div>
                 </div>
             )}

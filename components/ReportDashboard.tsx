@@ -4,6 +4,19 @@ import { CheckCircle, Clock, Download, Home, List, Wallet, CalendarDays, XCircle
 import { supabaseClient } from '../utils/supabase';
 import Papa from 'papaparse'; 
 
+// 🚀 Helper Function សម្រាប់ឆែកថា Point នៅក្នុ្ងង Polygon ឬអត់
+function isPointInPoly(point: [number, number], vs: Array<[number, number]>) {
+  const x = point[0], y = point[1];
+  let inside = false;
+  for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
+    const xi = vs[i][0], yi = vs[i][1];
+    const xj = vs[j][0], yj = vs[j][1];
+    const intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
 export default function ReportDashboard({
   currentUser, reportZone, setReportZone, uniqueZones,
   handleGlobalMonthChange, handleGlobalStatusChange, handleExportCSV,
@@ -12,85 +25,100 @@ export default function ReportDashboard({
   itemsPerPage, setItemsPerPage, currentPage, setCurrentPage, totalPages
 }: any) {
   const monthsList = ['ខែមករា', 'ខែកកុម្ភៈ', 'ខែមីនា', 'ខែមេសា', 'ខែឧសភា', 'ខែមិថុនា', 'ខែកក្កដា', 'ខែសីហា', 'ខែកញ្ញា', 'ខែតុលា', 'ខែវិច្ឆិកា', 'ខែធ្នូ'];
-  
   const [isImporting, setIsImporting] = useState(false);
 
-  const handleImportCSV = (e: any) => {
+  const handleImportCSV = async (e: any) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    if (!confirm('តើអ្នកពិតជាចង់ Import ទិន្នន័យពី File នេះមែនទេ? ប្រព័ន្ធនឹងបញ្ចូលវាជាទីតាំងថ្មីទាំងអស់។')) {
+    if (!confirm('តើអ្នកពិតជាចង់ Import ទិន្នន័យពី File នេះមែនទេ?')) {
         e.target.value = null;
         return;
     }
 
     setIsImporting(true);
 
-    Papa.parse(file, {
-      header: true, 
-      skipEmptyLines: true,
-      complete: async (results) => {
-        try {
-          const recordsToInsert = [];
-          let rowIndex = 0; // 🚀 បង្កើតលេខរៀងដើម្បីទប់ស្កាត់ការជាន់ ID
-          
-          for (const row of results.data as any[]) {
-            let latVal = row['Latitude'] || row['lat'] || row['Lat'] || row['Y'];
-            let lngVal = row['Longitude'] || row['lng'] || row['Lng'] || row['X'];
+    try {
+      // 🚀 ទាញយកទិន្នន័យ Zone Borders ទាំងអស់ដើម្បីឆែកទីតាំងអូតូ
+      const { data: zoneBorders } = await supabaseClient.from('zone_borders').select('*');
+
+      Papa.parse(file, {
+        header: true, 
+        skipEmptyLines: true,
+        complete: async (results) => {
+          try {
+            const recordsToInsert = [];
+            let rowIndex = 0;
             
-            if (row['WKT'] && row['WKT'].includes('POINT')) {
-                const coords = row['WKT'].replace('POINT (', '').replace(')', '').trim().split(' ');
-                if (coords.length >= 2) {
-                    lngVal = coords[0]; 
-                    latVal = coords[1]; 
-                }
+            for (const row of results.data as any[]) {
+              let latVal = row['Latitude'] || row['lat'] || row['Lat'] || row['Y'];
+              let lngVal = row['Longitude'] || row['lng'] || row['Lng'] || row['X'];
+              
+              if (row['WKT'] && row['WKT'].includes('POINT')) {
+                  const coords = row['WKT'].replace('POINT (', '').replace(')', '').trim().split(' ');
+                  if (coords.length >= 2) {
+                      lngVal = coords[0]; 
+                      latVal = coords[1]; 
+                  }
+              }
+
+              const nameVal = row['name'] || row['Title'] || row['Name'] || row['ឈ្មោះ'] || row['customer_name'] || 'អតិថិជនថ្មី';
+
+              if (latVal && lngVal) {
+                 rowIndex++;
+                 const ptLng = Number(lngVal);
+                 const ptLat = Number(latVal);
+
+                 // 🚀 ឆែកមើលថាតើ Point នេះស្ថិតនៅក្នុង Zone Border ណាខ្លះអូតូ
+                 let matchedZone = '';
+                 if (zoneBorders && zoneBorders.length > 0) {
+                   for (const border of zoneBorders) {
+                     const polyCoords = border.geojson?.geometry?.coordinates?.[0] || border.geojson?.coordinates?.[0];
+                     if (polyCoords && isPointInPoly([ptLng, ptLat], polyCoords)) {
+                       matchedZone = border.zone || '';
+                       break;
+                     }
+                   }
+                 }
+
+                 const customId = 'ID#' + Math.floor(10000 + Math.random() * 90000) + '-' + rowIndex;
+                 const geojson = { type: "Point", coordinates: [ptLng, ptLat] };
+
+                 recordsToInsert.push({
+                    custom_id: customId,
+                    customer_name: nameVal,
+                    lat: ptLat,
+                    lng: ptLng,
+                    shape_type: 'point',
+                    geojson: geojson,
+                    status_color: 'yellow',
+                    payment_month: 'ខែមករា',
+                    monthly_fee: 10000,
+                    zone: matchedZone // 🚀 ភ្ជាប់ Zone អូតូ ឬទុកចោលបើអត់នៅក្នុង Border
+                 });
+              }
             }
 
-            const nameVal = row['name'] || row['Title'] || row['Name'] || row['ឈ្មោះ'] || row['customer_name'] || 'អតិថិជនថ្មី';
-
-            if (latVal && lngVal) {
-               rowIndex++; // 🚀 បូកលេខរៀងម្តងមួយៗ
-               
-               // 🚀 លេខកូដការពារការជាន់គ្នា (Random 5ខ្ទង់ + លេខរៀង) ធានា១០០%
-               const customId = 'ID#' + Math.floor(10000 + Math.random() * 90000) + '-' + rowIndex;
-               
-               const geojson = {
-                  type: "Point",
-                  coordinates: [Number(lngVal), Number(latVal)] 
-               };
-
-               recordsToInsert.push({
-                  custom_id: customId,
-                  customer_name: nameVal,
-                  lat: Number(latVal),
-                  lng: Number(lngVal),
-                  shape_type: 'point',
-                  geojson: geojson,
-                  status_color: 'yellow',
-                  payment_month: 'ខែមករា',
-                  monthly_fee: 10000,
-                  zone: currentUser?.role !== 'super_admin' ? currentUser?.name : (reportZone || '')
-               });
+            if (recordsToInsert.length > 0) {
+              const { error } = await supabaseClient.from('households').insert(recordsToInsert);
+              if (error) throw error;
+              alert(`✅ ទាញយកទិន្នន័យបានចំនួន ${recordsToInsert.length} ទីតាំងជោគជ័យ!`);
+              window.location.reload(); 
+            } else {
+              alert('⚠️ រកមិនឃើញទិន្នន័យ Latitude/Longitude ក្នុង File នេះទេ!');
             }
+          } catch (error: any) {
+             alert('❌ បរាជ័យក្នុងការ Import: ' + error.message);
+          } finally {
+             setIsImporting(false);
+             e.target.value = null;
           }
-
-          if (recordsToInsert.length > 0) {
-            const { error } = await supabaseClient.from('households').insert(recordsToInsert);
-            if (error) throw error;
-            
-            alert(`✅ ទាញយកទិន្នន័យបានចំនួន ${recordsToInsert.length} ទីតាំងជោគជ័យ! ប្រព័ន្ធនឹង Refresh ដើម្បីបង្ហាញទិន្នន័យថ្មី។`);
-            window.location.reload(); 
-          } else {
-            alert('⚠️ រកមិនឃើញទិន្នន័យ (WKT ឬ Latitude/Longitude) ក្នុង File នេះទេ! សូមពិនិត្យមើល File ម្តងទៀត។');
-          }
-        } catch (error: any) {
-           alert('❌ បរាជ័យក្នុងការ Import: ' + error.message);
-        } finally {
-           setIsImporting(false);
-           e.target.value = null;
         }
-      }
-    });
+      });
+    } catch (err: any) {
+      alert('❌ មានបញ្ហាក្នុងការទាញយក Border: ' + err.message);
+      setIsImporting(false);
+    }
   };
 
   return (
@@ -121,11 +149,14 @@ export default function ReportDashboard({
               </>
             )}
             
-            <label className={`bg-indigo-50 text-indigo-700 border border-indigo-200 px-3 py-2 rounded-lg text-xs sm:text-sm font-bold hover:bg-indigo-100 shadow-sm flex items-center justify-center cursor-pointer flex-1 md:flex-none w-full md:w-auto transition-all ${isImporting ? 'opacity-50 cursor-not-allowed' : ''}`}>
-              {isImporting ? <Loader2 className="mr-1 animate-spin" size={16} /> : <UploadCloud className="mr-1" size={16} />}
-              {isImporting ? 'កំពុង Import...' : 'Import CSV'}
-              <input type="file" accept=".csv" className="hidden" onChange={handleImportCSV} disabled={isImporting} />
-            </label>
+            {/* 🚀 ប៊ូតុង Import CSV បង្ហាញតែលើ គណនី Super Admin ប៉ុណ្ណោះ */}
+            {currentUser?.role === 'super_admin' && (
+              <label className={`bg-indigo-50 text-indigo-700 border border-indigo-200 px-3 py-2 rounded-lg text-xs sm:text-sm font-bold hover:bg-indigo-100 shadow-sm flex items-center justify-center cursor-pointer flex-1 md:flex-none w-full md:w-auto transition-all ${isImporting ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                {isImporting ? <Loader2 className="mr-1 animate-spin" size={16} /> : <UploadCloud className="mr-1" size={16} />}
+                {isImporting ? 'កំពុង Import...' : 'Import CSV'}
+                <input type="file" accept=".csv" className="hidden" onChange={handleImportCSV} disabled={isImporting} />
+              </label>
+            )}
 
             <button onClick={handleExportCSV} className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-2 rounded-lg text-xs sm:text-sm font-bold hover:bg-emerald-100 shadow-sm flex items-center justify-center cursor-pointer flex-1 md:flex-none w-full md:w-auto"><Download className="mr-1" size={16} /> Export CSV</button>
           </div>
