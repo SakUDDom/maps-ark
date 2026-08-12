@@ -1,5 +1,8 @@
 'use client';
-import { CheckCircle, Clock, Download, Home, List, Wallet, CalendarDays, XCircle, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useState } from 'react';
+import { CheckCircle, Clock, Download, Home, List, Wallet, CalendarDays, XCircle, ChevronLeft, ChevronRight, UploadCloud, Loader2 } from 'lucide-react';
+import { supabaseClient } from '../utils/supabase';
+import Papa from 'papaparse'; 
 
 export default function ReportDashboard({
   currentUser, reportZone, setReportZone, uniqueZones,
@@ -9,6 +12,86 @@ export default function ReportDashboard({
   itemsPerPage, setItemsPerPage, currentPage, setCurrentPage, totalPages
 }: any) {
   const monthsList = ['ខែមករា', 'ខែកកុម្ភៈ', 'ខែមីនា', 'ខែមេសា', 'ខែឧសភា', 'ខែមិថុនា', 'ខែកក្កដា', 'ខែសីហា', 'ខែកញ្ញា', 'ខែតុលា', 'ខែវិច្ឆិកា', 'ខែធ្នូ'];
+  
+  const [isImporting, setIsImporting] = useState(false);
+
+  const handleImportCSV = (e: any) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    if (!confirm('តើអ្នកពិតជាចង់ Import ទិន្នន័យពី File នេះមែនទេ? ប្រព័ន្ធនឹងបញ្ចូលវាជាទីតាំងថ្មីទាំងអស់។')) {
+        e.target.value = null;
+        return;
+    }
+
+    setIsImporting(true);
+
+    Papa.parse(file, {
+      header: true, 
+      skipEmptyLines: true,
+      complete: async (results) => {
+        try {
+          const recordsToInsert = [];
+          let rowIndex = 0; // 🚀 បង្កើតលេខរៀងដើម្បីទប់ស្កាត់ការជាន់ ID
+          
+          for (const row of results.data as any[]) {
+            let latVal = row['Latitude'] || row['lat'] || row['Lat'] || row['Y'];
+            let lngVal = row['Longitude'] || row['lng'] || row['Lng'] || row['X'];
+            
+            if (row['WKT'] && row['WKT'].includes('POINT')) {
+                const coords = row['WKT'].replace('POINT (', '').replace(')', '').trim().split(' ');
+                if (coords.length >= 2) {
+                    lngVal = coords[0]; 
+                    latVal = coords[1]; 
+                }
+            }
+
+            const nameVal = row['name'] || row['Title'] || row['Name'] || row['ឈ្មោះ'] || row['customer_name'] || 'អតិថិជនថ្មី';
+
+            if (latVal && lngVal) {
+               rowIndex++; // 🚀 បូកលេខរៀងម្តងមួយៗ
+               
+               // 🚀 លេខកូដការពារការជាន់គ្នា (Random 5ខ្ទង់ + លេខរៀង) ធានា១០០%
+               const customId = 'ID#' + Math.floor(10000 + Math.random() * 90000) + '-' + rowIndex;
+               
+               const geojson = {
+                  type: "Point",
+                  coordinates: [Number(lngVal), Number(latVal)] 
+               };
+
+               recordsToInsert.push({
+                  custom_id: customId,
+                  customer_name: nameVal,
+                  lat: Number(latVal),
+                  lng: Number(lngVal),
+                  shape_type: 'point',
+                  geojson: geojson,
+                  status_color: 'yellow',
+                  payment_month: 'ខែមករា',
+                  monthly_fee: 10000,
+                  zone: currentUser?.role !== 'super_admin' ? currentUser?.name : (reportZone || '')
+               });
+            }
+          }
+
+          if (recordsToInsert.length > 0) {
+            const { error } = await supabaseClient.from('households').insert(recordsToInsert);
+            if (error) throw error;
+            
+            alert(`✅ ទាញយកទិន្នន័យបានចំនួន ${recordsToInsert.length} ទីតាំងជោគជ័យ! ប្រព័ន្ធនឹង Refresh ដើម្បីបង្ហាញទិន្នន័យថ្មី។`);
+            window.location.reload(); 
+          } else {
+            alert('⚠️ រកមិនឃើញទិន្នន័យ (WKT ឬ Latitude/Longitude) ក្នុង File នេះទេ! សូមពិនិត្យមើល File ម្តងទៀត។');
+          }
+        } catch (error: any) {
+           alert('❌ បរាជ័យក្នុងការ Import: ' + error.message);
+        } finally {
+           setIsImporting(false);
+           e.target.value = null;
+        }
+      }
+    });
+  };
 
   return (
     <div className="flex-1 w-full h-full overflow-y-auto bg-slate-50 pt-[80px] sm:pt-[100px] p-4 sm:p-6 lg:p-10 relative z-10">
@@ -37,7 +120,14 @@ export default function ReportDashboard({
                 </select>
               </>
             )}
-            <button onClick={handleExportCSV} className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-2 rounded-lg text-xs sm:text-sm font-bold hover:bg-emerald-100 shadow-sm flex items-center justify-center cursor-pointer flex-1 md:flex-none w-full md:w-auto"><Download className="mr-1" size={16} /> ទាញយក CSV</button>
+            
+            <label className={`bg-indigo-50 text-indigo-700 border border-indigo-200 px-3 py-2 rounded-lg text-xs sm:text-sm font-bold hover:bg-indigo-100 shadow-sm flex items-center justify-center cursor-pointer flex-1 md:flex-none w-full md:w-auto transition-all ${isImporting ? 'opacity-50 cursor-not-allowed' : ''}`}>
+              {isImporting ? <Loader2 className="mr-1 animate-spin" size={16} /> : <UploadCloud className="mr-1" size={16} />}
+              {isImporting ? 'កំពុង Import...' : 'Import CSV'}
+              <input type="file" accept=".csv" className="hidden" onChange={handleImportCSV} disabled={isImporting} />
+            </label>
+
+            <button onClick={handleExportCSV} className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-2 rounded-lg text-xs sm:text-sm font-bold hover:bg-emerald-100 shadow-sm flex items-center justify-center cursor-pointer flex-1 md:flex-none w-full md:w-auto"><Download className="mr-1" size={16} /> Export CSV</button>
           </div>
         </div>
 

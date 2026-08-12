@@ -7,7 +7,6 @@ import '@geoman-io/leaflet-geoman-free';
 import { MapPin, Eraser, Hexagon, Scissors, RotateCw, Search, Slash, Move, LogIn, LogOut, PieChart, Ban, X, Spline, Map as MapIcon, Clock, CheckCircle, RotateCcw, Road, Monitor, Smartphone, Navigation, Loader2, Layers } from 'lucide-react';
 import { supabaseClient } from '../utils/supabase';
 
-// 🚀 ទាញយក Components ដែលយើងបានបំបែក
 import LoginModal from './LoginModal';
 import BillPrint from './BillPrint';
 import CustomerDetail from './CustomerDetail';
@@ -94,11 +93,19 @@ export default function Map() {
   const [roadToggle, setRoadToggle] = useState(false);
   const [borderLive, setBorderLive] = useState(false);
 
+  // 🚀 អថេររក្សាមុំបង្វិលផែនទីលើ Mobile
+  const [mapRotation, setMapRotation] = useState(0);
+
   const currentUserRef = useRef<any>(null);
   const allDataRef = useRef<any[]>([]);
+  const deviceChoiceRef = useRef<'pc' | 'mobile' | null>(null);
   const hasFetchedRef = useRef(false);
 
   const monthsList = ['ខែមករា', 'ខែកកុម្ភៈ', 'ខែមីនា', 'ខែមេសា', 'ខែឧសភា', 'ខែមិថុនា', 'ខែកក្កដា', 'ខែសីហា', 'ខែកញ្ញា', 'ខែតុលា', 'ខែវិច្ឆិកា', 'ខែធ្នូ'];
+
+  useEffect(() => {
+    deviceChoiceRef.current = deviceChoice;
+  }, [deviceChoice]);
 
   useEffect(() => {
     const checkSession = async () => {
@@ -129,7 +136,7 @@ export default function Map() {
         mapInstance.current.locate({ watch: true, enableHighAccuracy: true });
         mapInstance.current.on('locationfound', (e: any) => {
             if (!locationMarkerRef.current) {
-                const liveIcon = L.divIcon({ className: 'clear-default-icon', html: `<div class="live-location-pulse"></div><div class="live-location-dot"></div>`, iconSize: [24, 24], iconAnchor: [12, 12] });
+                const liveIcon = L.divIcon({ className: 'clear-default-icon', html: `<div class="live-location-pulse"></div><div class="live-location-dot"></div>`, iconSize: [28, 28], iconAnchor: [14, 14] });
                 locationMarkerRef.current = L.marker(e.latlng, { icon: liveIcon }).addTo(mapInstance.current!);
                 mapInstance.current?.flyTo(e.latlng, 17, { animate: true, duration: 1.5 });
             } else { locationMarkerRef.current.setLatLng(e.latlng); }
@@ -145,12 +152,28 @@ export default function Map() {
       if (deviceChoice === 'mobile' && mapInstance.current) mapInstance.current.locate({ setView: true, maxZoom: 18, enableHighAccuracy: true });
   };
 
+  // 🚀 បង្វិលផែនទីលើ Mobile
+  const handleRotateMapAngle = () => {
+    const nextAngle = (mapRotation + 90) % 360;
+    setMapRotation(nextAngle);
+  };
+
   const addHouseholdToMap = (h: any) => {
     let layer: any;
     let colorHex = h.status_color === 'blue' ? '#2563eb' : h.status_color === 'red' ? '#dc2626' : h.status_color === 'black' ? '#020617' : '#f59e0b';
 
+    // 🚀 ប្រសិនបើជ្រើសរើស Mobile ឱ្យ Radius ធំ (14px) ដើម្បីស្រួលចុច
+    const isMobileChoice = deviceChoiceRef.current === 'mobile';
+    const pointRadius = isMobileChoice ? 14 : 9;
+
     if (h.shape_type === 'point' && h.lat && h.lng) {
-      layer = L.circleMarker([h.lat, h.lng], { radius: 8, fillColor: colorHex, color: '#ffffff', weight: 2, fillOpacity: 0.95 });
+      layer = L.circleMarker([h.lat, h.lng], { 
+        radius: pointRadius, 
+        fillColor: colorHex, 
+        color: '#ffffff', 
+        weight: isMobileChoice ? 3 : 2, 
+        fillOpacity: 0.95 
+      });
       if (pointsLayer.current) { layer.options.dbId = h.id; layer.options.dbType = 'household'; layer.addTo(pointsLayer.current); }
     } 
     else if (h.shape_type === 'polygon' && h.geojson) {
@@ -239,7 +262,15 @@ export default function Map() {
     L.Icon.Default.mergeOptions({ iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png', iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png', shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png' });
 
     if (typeof window !== 'undefined' && mapRef.current && !mapInstance.current) {
-      mapInstance.current = L.map(mapRef.current, { zoomControl: false, preferCanvas: true }).setView([11.99, 105.46], 15);
+      // 🚀 បន្ថែម L.canvas({ tolerance: 20 }) ដើម្បីបង្កើន Touch Hitbox លើ Mobile
+      const customRenderer = L.canvas({ tolerance: 20 });
+
+      mapInstance.current = L.map(mapRef.current, { 
+        zoomControl: false, 
+        preferCanvas: true,
+        renderer: customRenderer
+      }).setView([11.99, 105.46], 15);
+
       L.control.zoom({ position: 'bottomright' }).addTo(mapInstance.current);
       L.tileLayer('https://{s}.google.com/vt/lyrs=s,h&x={x}&y={y}&z={z}', { maxZoom: 21, subdomains: ['mt0', 'mt1', 'mt2', 'mt3'] }).addTo(mapInstance.current);
 
@@ -373,7 +404,6 @@ export default function Map() {
     polygonsLayer.current?.eachLayer((layer: any) => { if (layer.options.dbId === id) layer.setStyle({ fillColor: colorHex }); });
   };
 
-  // 🚀 លុបចោលសញ្ញា # ចេញពីឈ្មោះ File ដើម្បីកុំឱ្យខូច URL
   const handlePhotoUpload = async (e: any) => {
     const file = e.target.files[0];
     if (!file || !selectedHome) return;
@@ -382,7 +412,6 @@ export default function Map() {
       setIsUploading(true);
       const compressedFile = await compressImage(file);
       
-      // 🚀 លុបសញ្ញាពិសេសទាំងអស់ចេញពី ID (ឧទាហរណ៍ ID#2213 ទៅជា ID2213)
       const safeId = selectedHome.custom_id.replace(/[^a-zA-Z0-9]/g, ''); 
       const fileName = `${safeId}_${Date.now()}.jpg`;
 
@@ -396,7 +425,6 @@ export default function Map() {
         .from('photos')
         .getPublicUrl(fileName);
 
-      // 🚀 បន្ថែម ?t= ពីក្រោយដើម្បីបង្ខំឱ្យ Browser ទាញយករូបថ្មីជានិច្ច
       const newPhotoUrl = `${publicUrlData.publicUrl}?t=${Date.now()}`;
       setEditForm({ ...editForm, photo_url: newPhotoUrl });
       
@@ -404,7 +432,7 @@ export default function Map() {
       alert('❌ បរាជ័យក្នុងការបញ្ចូលរូបភាព៖ ' + error.message);
     } finally {
       setIsUploading(false);
-      e.target.value = null; // 🚀 Reset កន្លែងរើសរូបដើម្បីឱ្យអាចរើសម្តងទៀតបាន
+      e.target.value = null; 
     }
   };
 
@@ -640,8 +668,12 @@ export default function Map() {
             <button onClick={() => setIsToolsPanelOpen(true)} className="absolute top-[80px] left-4 z-[1000] bg-white p-3 sm:p-3.5 rounded-2xl shadow-xl border border-slate-200 hover:bg-slate-50 transition-all cursor-pointer text-indigo-600 flex items-center justify-center hover:scale-105" title="បើកផ្ទាំងបញ្ជា"><Layers size={22} /></button>
             )}
 
+            {/* 🚀 ប៊ូតុង Locate Me & Rotate លើ Mobile Option 2 */}
             {deviceChoice === 'mobile' && !isToolsPanelOpen && (
-            <button onClick={handleLocateMe} className="absolute top-[140px] left-4 z-[1000] bg-blue-600 p-3 sm:p-3.5 rounded-2xl shadow-xl border border-blue-700 hover:bg-blue-700 transition-all cursor-pointer text-white flex items-center justify-center hover:scale-105" title="ទីតាំងរបស់ខ្ញុំ"><Navigation size={22} /></button>
+              <div className="absolute top-[140px] left-4 z-[1000] flex flex-col gap-2">
+                <button onClick={handleLocateMe} className="bg-blue-600 p-3.5 rounded-2xl shadow-xl border border-blue-700 hover:bg-blue-700 transition-all cursor-pointer text-white flex items-center justify-center hover:scale-105" title="ទីតាំងរបស់ខ្ញុំ"><Navigation size={22} /></button>
+                <button onClick={handleRotateMapAngle} className="bg-slate-800 p-3.5 rounded-2xl shadow-xl border border-slate-700 hover:bg-slate-900 transition-all cursor-pointer text-white flex items-center justify-center hover:scale-105" title="បង្វិលផែនទី 90°"><RotateCw size={22} /></button>
+              </div>
             )}
 
             <div className={`absolute top-[80px] left-4 z-[1050] w-[calc(100vw-32px)] sm:w-[340px] flex flex-col gap-4 transition-all duration-300 transform ${isToolsPanelOpen ? 'translate-x-0 opacity-100 pointer-events-auto' : '-translate-x-[400px] opacity-0 pointer-events-none'} hide-scrollbar overflow-y-auto max-h-[calc(100vh-100px)] pb-6`}>
@@ -703,8 +735,14 @@ export default function Map() {
             )}
 
             </div>
-            <main className="flex-1 relative z-0 h-full bg-slate-100">
-            <div ref={mapRef} className="w-full h-full" />
+            
+            {/* 🚀 ផែនទីមានសមត្ថភាពអាច Rotate CSS Transformation បាន */}
+            <main className="flex-1 relative z-0 h-full bg-slate-100 overflow-hidden">
+              <div 
+                ref={mapRef} 
+                className="w-full h-full transition-transform duration-500" 
+                style={{ transform: `rotate(${mapRotation}deg)` }}
+              />
             </main>
         </div>
 
