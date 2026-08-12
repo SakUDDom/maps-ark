@@ -12,7 +12,6 @@ import BillPrint from './BillPrint';
 import CustomerDetail from './CustomerDetail';
 import ReportDashboard from './ReportDashboard';
 
-// 🚀 កែសម្រួលប្រព័ន្ធ Drag របស់ Leaflet ឱ្យរត់ត្រូវទិសដៅម្រាមដៃ ពេលផែនទីបង្វិល
 if (typeof window !== 'undefined' && !(L.Draggable.prototype as any)._isRotatedPatched) {
   (L.Draggable.prototype as any)._isRotatedPatched = true;
   (L.Draggable.prototype as any)._originalOnMove = L.Draggable.prototype._onMove;
@@ -35,7 +34,6 @@ if (typeof window !== 'undefined' && !(L.Draggable.prototype as any)._isRotatedP
 
     if (!screenOffset.x && !screenOffset.y) return;
 
-    // គណនាមុំបកថយក្រោយ (Inverse Matrix Rotation)
     const rad = (-rotation * Math.PI) / 180;
     const rotatedX = (screenOffset.x * Math.cos(rad) - screenOffset.y * Math.sin(rad)) / scale;
     const rotatedY = (screenOffset.x * Math.sin(rad) + screenOffset.y * Math.cos(rad)) / scale;
@@ -131,7 +129,6 @@ export default function Map() {
   const [roadToggle, setRoadToggle] = useState(false);
   const [borderLive, setBorderLive] = useState(false);
 
-  // 🚀 អថេរមុំបង្វិល
   const [mapRotation, setMapRotation] = useState(0);
   const initialTouchAngleRef = useRef<number | null>(null);
   const initialRotationRef = useRef<number>(0);
@@ -147,7 +144,6 @@ export default function Map() {
     deviceChoiceRef.current = deviceChoice;
   }, [deviceChoice]);
 
-  // 🚀 រក្សាតម្លៃ Rotation និង Scale ចូលក្នុង Window សម្រាប់ Drag Handler
   useEffect(() => {
     if (typeof window !== 'undefined') {
       (window as any)._currentMapRotation = mapRotation;
@@ -179,7 +175,6 @@ export default function Map() {
 
   useEffect(() => { allDataRef.current = allData; }, [allData]);
 
-  // 🚀 មុខងារចាប់បទបញ្ជាម្រាមដៃពីរ (2-Finger Rotation)
   useEffect(() => {
     const container = mapRef.current;
     if (!container) return;
@@ -251,15 +246,16 @@ export default function Map() {
     let layer: any;
     let colorHex = h.status_color === 'blue' ? '#2563eb' : h.status_color === 'red' ? '#dc2626' : h.status_color === 'black' ? '#020617' : '#f59e0b';
 
+    // 🚀 កែសម្រួលទំហំ Point ឱ្យតូចត្រឹមត្រូវ Fit ស្អាតលើអេក្រង់
     const isMobileChoice = deviceChoiceRef.current === 'mobile';
-    const pointRadius = isMobileChoice ? 12 : 8;
+    const pointRadius = isMobileChoice ? 4.5 : 5;
 
     if (h.shape_type === 'point' && h.lat && h.lng) {
       layer = L.circleMarker([h.lat, h.lng], { 
         radius: pointRadius, 
         fillColor: colorHex, 
         color: '#ffffff', 
-        weight: isMobileChoice ? 2.5 : 1.5, 
+        weight: 1.2, 
         fillOpacity: 0.95 
       });
       if (pointsLayer.current) { layer.options.dbId = h.id; layer.options.dbType = 'household'; layer.addTo(pointsLayer.current); }
