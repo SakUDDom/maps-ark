@@ -93,7 +93,7 @@ export default function Map() {
   const [roadToggle, setRoadToggle] = useState(false);
   const [borderLive, setBorderLive] = useState(false);
 
-  // 🚀 អថេរសម្រាប់គណនាមុំបង្វិលតាមម្រាមដៃពីរ
+  // 🚀 អថេរមុំបង្វិល
   const [mapRotation, setMapRotation] = useState(0);
   const initialTouchAngleRef = useRef<number | null>(null);
   const initialRotationRef = useRef<number>(0);
@@ -133,7 +133,7 @@ export default function Map() {
 
   useEffect(() => { allDataRef.current = allData; }, [allData]);
 
-  // 🚀 មុខងារចាប់បទបញ្ជាម្រាមដៃពីរ (2-Finger Touch Rotation Gesture)
+  // 🚀 មុខងារចាប់បទបញ្ជាម្រាមដៃពីរ (2-Finger Rotation)
   useEffect(() => {
     const container = mapRef.current;
     if (!container) return;
@@ -206,14 +206,14 @@ export default function Map() {
     let colorHex = h.status_color === 'blue' ? '#2563eb' : h.status_color === 'red' ? '#dc2626' : h.status_color === 'black' ? '#020617' : '#f59e0b';
 
     const isMobileChoice = deviceChoiceRef.current === 'mobile';
-    const pointRadius = isMobileChoice ? 14 : 9;
+    const pointRadius = isMobileChoice ? 12 : 8;
 
     if (h.shape_type === 'point' && h.lat && h.lng) {
       layer = L.circleMarker([h.lat, h.lng], { 
         radius: pointRadius, 
         fillColor: colorHex, 
         color: '#ffffff', 
-        weight: isMobileChoice ? 3 : 2, 
+        weight: isMobileChoice ? 2.5 : 1.5, 
         fillOpacity: 0.95 
       });
       if (pointsLayer.current) { layer.options.dbId = h.id; layer.options.dbType = 'household'; layer.addTo(pointsLayer.current); }
@@ -243,7 +243,7 @@ export default function Map() {
       if(r.road_type === 'Asphalt road') roadColor = '#e01ae3';
 
       const layer = L.geoJSON(r.geojson, { style: { color: roadColor, weight: 6, opacity: 0.9 } }); 
-      layer.bindTooltip(`<div class="text-center"><b>${r.name || 'មិនមានឈ្មោះផ្លូវ'}</b><br><span class="text-xs text-slate-500">${r.road_type || 'Land road'} | ទំហំ: ${r.width || 'មិនបញ្ជាក់'}</span></div>`, {sticky: true, className: 'font-bold'});
+      layer.bindTooltip(`<div class="text-center unrotate-element"><b>${r.name || 'មិនមានឈ្មោះផ្លូវ'}</b><br><span class="text-xs text-slate-500">${r.road_type || 'Land road'} | ទំហំ: ${r.width || 'មិនបញ្ជាក់'}</span></div>`, {sticky: true, className: 'font-bold'});
       layer.eachLayer((l: any) => { 
         l.options.dbId = r.id; l.options.dbType = 'road'; 
         l.on('dblclick', () => { if(!currentUserRef.current) return; setRoadEditData({ isNew: false, id: r.id, name: r.name || '', width: r.width || '', address: r.address || '', road_type: r.road_type || 'Land road' }); });
@@ -255,7 +255,7 @@ export default function Map() {
   const addBorderToMap = (b: any) => {
     if (b.geojson) {
       const layer = L.geoJSON(b.geojson, { style: { color: '#ec4899', weight: 5, opacity: 0.8, dashArray: '8, 8', fillOpacity: 0.1 } }); 
-      layer.bindTooltip(`ព្រំដែនតំបន់៖ <b>${b.zone || 'មិនបញ្ជាក់'}</b>`, { sticky: true, className: 'font-bold text-sm bg-white px-2 py-1 shadow-md border border-slate-200 rounded' });
+      layer.bindTooltip(`<div class="unrotate-element">ព្រំដែនតំបន់៖ <b>${b.zone || 'មិនបញ្ជាក់'}</b></div>`, { sticky: true, className: 'font-bold text-sm bg-white px-2 py-1 shadow-md border border-slate-200 rounded' });
       layer.eachLayer((l: any) => { 
         l.options.dbId = b.id; l.options.dbType = 'border'; 
         l.on('dblclick', async () => {
@@ -263,7 +263,7 @@ export default function Map() {
           const newZoneName = prompt("កែប្រែឈ្មោះតំបន់ (Zone) សម្រាប់ព្រំដែននេះ៖", b.zone);
           if (newZoneName && newZoneName.trim() !== "" && newZoneName !== b.zone) {
               await supabaseClient.from('zone_borders').update({ zone: newZoneName.trim() }).eq('id', b.id);
-              l.bindTooltip(`ព្រំដែនតំបន់៖ <b>${newZoneName.trim()}</b>`, { sticky: true, className: 'font-bold text-sm bg-white px-2 py-1 shadow-md border border-slate-200 rounded' });
+              l.bindTooltip(`<div class="unrotate-element">ព្រំដែនតំបន់៖ <b>${newZoneName.trim()}</b></div>`, { sticky: true, className: 'font-bold text-sm bg-white px-2 py-1 shadow-md border border-slate-200 rounded' });
           }
         });
       });
@@ -655,13 +655,19 @@ export default function Map() {
   const totalPages = Math.ceil(totalHouses / itemsPerPage);
 
   return (
-    <div className="flex flex-col h-screen w-full bg-slate-50 overflow-hidden font-sans relative">
+    <div className="flex flex-col h-screen w-full bg-slate-900 overflow-hidden font-sans relative">
+      {/* 🚀 CSS ពិសេសសម្រាប់បង្វិលអក្សរត្រឡប់មកវិញ (Counter Rotate) កុំឱ្យត្រឡប់ចង្ក្រោម */}
       <style dangerouslySetInnerHTML={{__html: `
         .clear-default-icon { background: none; border: none; }
         .live-location-dot { width: 14px; height: 14px; background-color: #2563eb; border: 3px solid white; border-radius: 50%; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 2; box-shadow: 0 2px 4px rgba(0,0,0,0.3); }
         .live-location-pulse { width: 40px; height: 40px; background-color: rgba(37, 99, 235, 0.4); border-radius: 50%; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1; animation: pulse 2s infinite ease-in-out; }
         @keyframes pulse { 0% { transform: translate(-50%, -50%) scale(0.5); opacity: 1; } 100% { transform: translate(-50%, -50%) scale(1.5); opacity: 0; } }
         
+        .unrotate-element, .leaflet-tooltip {
+          transform: rotate(${-mapRotation}deg) !important;
+          transition: transform 0.1s ease-out;
+        }
+
         @media print {
           body * { visibility: hidden; }
           #print-bill-container, #print-bill-container * { visibility: visible; }
@@ -704,17 +710,16 @@ export default function Map() {
             </div>
         </header>
 
-        <div className={`flex-1 relative w-full h-full ${activeView === 'map' ? 'flex' : 'hidden'}`}>
+        <div className={`flex-1 relative w-full h-full overflow-hidden ${activeView === 'map' ? 'flex' : 'hidden'}`}>
             {!isToolsPanelOpen && (
             <button onClick={() => setIsToolsPanelOpen(true)} className="absolute top-[80px] left-4 z-[1000] bg-white p-3 sm:p-3.5 rounded-2xl shadow-xl border border-slate-200 hover:bg-slate-50 transition-all cursor-pointer text-indigo-600 flex items-center justify-center hover:scale-105" title="បើកផ្ទាំងបញ្ជា"><Layers size={22} /></button>
             )}
 
-            {/* 🚀 ប៊ូតុង Locate Me & Reset North លើ Mobile Option 2 */}
             {deviceChoice === 'mobile' && !isToolsPanelOpen && (
               <div className="absolute top-[140px] left-4 z-[1000] flex flex-col gap-2">
                 <button onClick={handleLocateMe} className="bg-blue-600 p-3.5 rounded-2xl shadow-xl border border-blue-700 hover:bg-blue-700 transition-all cursor-pointer text-white flex items-center justify-center hover:scale-105" title="ទីតាំងរបស់ខ្ញុំ"><Navigation size={22} /></button>
                 {mapRotation !== 0 && (
-                  <button onClick={resetMapNorth} className="bg-rose-600 p-3.5 rounded-2xl shadow-xl border border-rose-700 hover:bg-rose-700 transition-all cursor-pointer text-white flex items-center justify-center hover:scale-105 text-xs font-bold" title="តម្រឹមទិសខាងជើង">🧭 0°</button>
+                  <button onClick={resetMapNorth} className="bg-rose-600 p-3.5 rounded-2xl shadow-xl border border-rose-700 hover:bg-rose-700 transition-all cursor-pointer text-white flex items-center justify-center hover:scale-105 text-xs font-bold shadow-lg" title="តម្រឹមទិសខាងជើង">🧭 0°</button>
                 )}
               </div>
             )}
@@ -779,11 +784,12 @@ export default function Map() {
 
             </div>
             
-            <main className="flex-1 relative z-0 h-full bg-slate-100 overflow-hidden">
+            {/* 🚀 បន្ថែម scale(1.6) ដើម្បីបិទបាំងជ្រុងខ្មៅៗនៅពេលបង្វិល */}
+            <main className="flex-1 relative z-0 h-full bg-slate-900 overflow-hidden">
               <div 
                 ref={mapRef} 
-                className="w-full h-full transition-transform duration-75 touch-none" 
-                style={{ transform: `rotate(${mapRotation}deg)` }}
+                className="w-full h-full transition-transform duration-75 touch-none origin-center" 
+                style={{ transform: `rotate(${mapRotation}deg) scale(1.6)` }}
               />
             </main>
         </div>
