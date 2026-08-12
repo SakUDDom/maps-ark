@@ -93,8 +93,10 @@ export default function Map() {
   const [roadToggle, setRoadToggle] = useState(false);
   const [borderLive, setBorderLive] = useState(false);
 
-  // 🚀 អថេររក្សាមុំបង្វិលផែនទីលើ Mobile
+  // 🚀 អថេរសម្រាប់គណនាមុំបង្វិលតាមម្រាមដៃពីរ
   const [mapRotation, setMapRotation] = useState(0);
+  const initialTouchAngleRef = useRef<number | null>(null);
+  const initialRotationRef = useRef<number>(0);
 
   const currentUserRef = useRef<any>(null);
   const allDataRef = useRef<any[]>([]);
@@ -131,6 +133,49 @@ export default function Map() {
 
   useEffect(() => { allDataRef.current = allData; }, [allData]);
 
+  // 🚀 មុខងារចាប់បទបញ្ជាម្រាមដៃពីរ (2-Finger Touch Rotation Gesture)
+  useEffect(() => {
+    const container = mapRef.current;
+    if (!container) return;
+
+    const getAngle = (t1: Touch, t2: Touch) => {
+      const dx = t2.clientX - t1.clientX;
+      const dy = t2.clientY - t1.clientY;
+      return (Math.atan2(dy, dx) * 180) / Math.PI;
+    };
+
+    const handleTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        initialTouchAngleRef.current = getAngle(e.touches[0], e.touches[1]);
+        initialRotationRef.current = mapRotation;
+      }
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (e.touches.length === 2 && initialTouchAngleRef.current !== null) {
+        const currentAngle = getAngle(e.touches[0], e.touches[1]);
+        const delta = currentAngle - initialTouchAngleRef.current;
+        setMapRotation((initialRotationRef.current + delta) % 360);
+      }
+    };
+
+    const handleTouchEnd = (e: TouchEvent) => {
+      if (e.touches.length < 2) {
+        initialTouchAngleRef.current = null;
+      }
+    };
+
+    container.addEventListener('touchstart', handleTouchStart);
+    container.addEventListener('touchmove', handleTouchMove);
+    container.addEventListener('touchend', handleTouchEnd);
+
+    return () => {
+      container.removeEventListener('touchstart', handleTouchStart);
+      container.removeEventListener('touchmove', handleTouchMove);
+      container.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, [mapRotation]);
+
   useEffect(() => {
     if (deviceChoice === 'mobile' && mapInstance.current) {
         mapInstance.current.locate({ watch: true, enableHighAccuracy: true });
@@ -152,17 +197,14 @@ export default function Map() {
       if (deviceChoice === 'mobile' && mapInstance.current) mapInstance.current.locate({ setView: true, maxZoom: 18, enableHighAccuracy: true });
   };
 
-  // 🚀 បង្វិលផែនទីលើ Mobile
-  const handleRotateMapAngle = () => {
-    const nextAngle = (mapRotation + 90) % 360;
-    setMapRotation(nextAngle);
+  const resetMapNorth = () => {
+    setMapRotation(0);
   };
 
   const addHouseholdToMap = (h: any) => {
     let layer: any;
     let colorHex = h.status_color === 'blue' ? '#2563eb' : h.status_color === 'red' ? '#dc2626' : h.status_color === 'black' ? '#020617' : '#f59e0b';
 
-    // 🚀 ប្រសិនបើជ្រើសរើស Mobile ឱ្យ Radius ធំ (14px) ដើម្បីស្រួលចុច
     const isMobileChoice = deviceChoiceRef.current === 'mobile';
     const pointRadius = isMobileChoice ? 14 : 9;
 
@@ -262,7 +304,6 @@ export default function Map() {
     L.Icon.Default.mergeOptions({ iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png', iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png', shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png' });
 
     if (typeof window !== 'undefined' && mapRef.current && !mapInstance.current) {
-      // 🚀 បន្ថែម L.canvas({ tolerance: 20 }) ដើម្បីបង្កើន Touch Hitbox លើ Mobile
       const customRenderer = L.canvas({ tolerance: 20 });
 
       mapInstance.current = L.map(mapRef.current, { 
@@ -668,11 +709,13 @@ export default function Map() {
             <button onClick={() => setIsToolsPanelOpen(true)} className="absolute top-[80px] left-4 z-[1000] bg-white p-3 sm:p-3.5 rounded-2xl shadow-xl border border-slate-200 hover:bg-slate-50 transition-all cursor-pointer text-indigo-600 flex items-center justify-center hover:scale-105" title="បើកផ្ទាំងបញ្ជា"><Layers size={22} /></button>
             )}
 
-            {/* 🚀 ប៊ូតុង Locate Me & Rotate លើ Mobile Option 2 */}
+            {/* 🚀 ប៊ូតុង Locate Me & Reset North លើ Mobile Option 2 */}
             {deviceChoice === 'mobile' && !isToolsPanelOpen && (
               <div className="absolute top-[140px] left-4 z-[1000] flex flex-col gap-2">
                 <button onClick={handleLocateMe} className="bg-blue-600 p-3.5 rounded-2xl shadow-xl border border-blue-700 hover:bg-blue-700 transition-all cursor-pointer text-white flex items-center justify-center hover:scale-105" title="ទីតាំងរបស់ខ្ញុំ"><Navigation size={22} /></button>
-                <button onClick={handleRotateMapAngle} className="bg-slate-800 p-3.5 rounded-2xl shadow-xl border border-slate-700 hover:bg-slate-900 transition-all cursor-pointer text-white flex items-center justify-center hover:scale-105" title="បង្វិលផែនទី 90°"><RotateCw size={22} /></button>
+                {mapRotation !== 0 && (
+                  <button onClick={resetMapNorth} className="bg-rose-600 p-3.5 rounded-2xl shadow-xl border border-rose-700 hover:bg-rose-700 transition-all cursor-pointer text-white flex items-center justify-center hover:scale-105 text-xs font-bold" title="តម្រឹមទិសខាងជើង">🧭 0°</button>
+                )}
               </div>
             )}
 
@@ -736,11 +779,10 @@ export default function Map() {
 
             </div>
             
-            {/* 🚀 ផែនទីមានសមត្ថភាពអាច Rotate CSS Transformation បាន */}
             <main className="flex-1 relative z-0 h-full bg-slate-100 overflow-hidden">
               <div 
                 ref={mapRef} 
-                className="w-full h-full transition-transform duration-500" 
+                className="w-full h-full transition-transform duration-75 touch-none" 
                 style={{ transform: `rotate(${mapRotation}deg)` }}
               />
             </main>
