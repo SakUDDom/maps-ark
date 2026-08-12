@@ -12,6 +12,44 @@ import BillPrint from './BillPrint';
 import CustomerDetail from './CustomerDetail';
 import ReportDashboard from './ReportDashboard';
 
+// 🚀 កែសម្រួលប្រព័ន្ធ Drag របស់ Leaflet ឱ្យរត់ត្រូវទិសដៅម្រាមដៃ ពេលផែនទីបង្វិល
+if (typeof window !== 'undefined' && !(L.Draggable.prototype as any)._isRotatedPatched) {
+  (L.Draggable.prototype as any)._isRotatedPatched = true;
+  (L.Draggable.prototype as any)._originalOnMove = L.Draggable.prototype._onMove;
+  
+  (L.Draggable.prototype as any)._onMove = function (e: any) {
+    if (!this._enabled) { return; }
+    
+    const rotation = (window as any)._currentMapRotation || 0;
+    const scale = (window as any)._currentMapScale || 1.6;
+
+    if (rotation === 0 && scale === 1) {
+      return (L.Draggable.prototype as any)._originalOnMove.call(this, e);
+    }
+
+    const firstTouch = e.touches && e.touches.length > 0 ? e.touches[0] : e;
+    if (!firstTouch || !this._startPoint) return;
+
+    const currentPoint = L.point(firstTouch.clientX, firstTouch.clientY);
+    const screenOffset = currentPoint.subtract(this._startPoint);
+
+    if (!screenOffset.x && !screenOffset.y) return;
+
+    // គណនាមុំបកថយក្រោយ (Inverse Matrix Rotation)
+    const rad = (-rotation * Math.PI) / 180;
+    const rotatedX = (screenOffset.x * Math.cos(rad) - screenOffset.y * Math.sin(rad)) / scale;
+    const rotatedY = (screenOffset.x * Math.sin(rad) + screenOffset.y * Math.cos(rad)) / scale;
+
+    this._newPos = this._startPos.add(L.point(rotatedX, rotatedY));
+
+    if (e.touches && e.touches.length > 1) return;
+
+    if (e.preventDefault) e.preventDefault();
+    this._updatePosition();
+    this.fire('drag');
+  };
+}
+
 const Toggle = ({ enabled, setEnabled }: { enabled: boolean, setEnabled: (val: boolean) => void }) => (
   <div onClick={() => setEnabled(!enabled)} className={`w-11 h-6 rounded-full flex items-center cursor-pointer p-1 transition-colors shadow-inner ${enabled ? 'bg-emerald-500' : 'bg-slate-300'}`}>
     <div className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform ${enabled ? 'translate-x-5' : 'translate-x-0'}`} />
@@ -108,6 +146,14 @@ export default function Map() {
   useEffect(() => {
     deviceChoiceRef.current = deviceChoice;
   }, [deviceChoice]);
+
+  // 🚀 រក្សាតម្លៃ Rotation និង Scale ចូលក្នុង Window សម្រាប់ Drag Handler
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      (window as any)._currentMapRotation = mapRotation;
+      (window as any)._currentMapScale = 1.6;
+    }
+  }, [mapRotation]);
 
   useEffect(() => {
     const checkSession = async () => {
@@ -656,7 +702,6 @@ export default function Map() {
 
   return (
     <div className="flex flex-col h-screen w-full bg-slate-900 overflow-hidden font-sans relative">
-      {/* 🚀 CSS ពិសេសសម្រាប់បង្វិលអក្សរត្រឡប់មកវិញ (Counter Rotate) កុំឱ្យត្រឡប់ចង្ក្រោម */}
       <style dangerouslySetInnerHTML={{__html: `
         .clear-default-icon { background: none; border: none; }
         .live-location-dot { width: 14px; height: 14px; background-color: #2563eb; border: 3px solid white; border-radius: 50%; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 2; box-shadow: 0 2px 4px rgba(0,0,0,0.3); }
@@ -784,7 +829,6 @@ export default function Map() {
 
             </div>
             
-            {/* 🚀 បន្ថែម scale(1.6) ដើម្បីបិទបាំងជ្រុងខ្មៅៗនៅពេលបង្វិល */}
             <main className="flex-1 relative z-0 h-full bg-slate-900 overflow-hidden">
               <div 
                 ref={mapRef} 
