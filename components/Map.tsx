@@ -36,21 +36,16 @@ function extractPolyCoords(geojson: any) {
   return null;
 }
 
+// 🚀 កែសម្រួលប្រព័ន្ធ Drag និងការពារកុំឱ្យរំញ័រម្រាមដៃបដិសេធការចុច (Touch Tolerance & Click Protection)
 if (typeof window !== 'undefined' && !(L.Draggable.prototype as any)._isRotatedPatched) {
   (L.Draggable.prototype as any)._isRotatedPatched = true;
   (L.Draggable.prototype as any)._originalOnMove = L.Draggable.prototype._onMove;
   
   (L.Draggable.prototype as any)._onMove = function (e: any) {
     if (!this._enabled) { return; }
-    
-    this._moved = true; 
 
     const rotation = (window as any)._currentMapRotation || 0;
     const scale = (window as any)._currentMapScale || 1.6;
-
-    if (rotation === 0 && scale === 1) {
-      return (L.Draggable.prototype as any)._originalOnMove.call(this, e);
-    }
 
     const firstTouch = e.touches && e.touches.length > 0 ? e.touches[0] : e;
     if (!firstTouch || !this._startPoint) return;
@@ -58,7 +53,16 @@ if (typeof window !== 'undefined' && !(L.Draggable.prototype as any)._isRotatedP
     const currentPoint = L.point(firstTouch.clientX, firstTouch.clientY);
     const screenOffset = currentPoint.subtract(this._startPoint);
 
-    if (!screenOffset.x && !screenOffset.y) return;
+    // 🚀 ប្រសិនបើរំញ័រតិចជាង 6px ទុកជាការចុច (Click/Tap) មិនឱ្យរំខានដល់ការបើកផ្ទាំង Point ឡើយ
+    if (Math.abs(screenOffset.x) < 6 && Math.abs(screenOffset.y) < 6) {
+      return;
+    }
+
+    this._moved = true;
+
+    if (rotation === 0 && scale === 1) {
+      return (L.Draggable.prototype as any)._originalOnMove.call(this, e);
+    }
 
     const rad = (-rotation * Math.PI) / 180;
     const rotatedX = (screenOffset.x * Math.cos(rad) - screenOffset.y * Math.sin(rad)) / scale;
@@ -154,8 +158,6 @@ export default function Map() {
   const [pointToggle, setPointToggle] = useState(false);
   const [polygonToggle, setPolygonToggle] = useState(false);
   const [roadToggle, setRoadToggle] = useState(false);
-  
-  // 🚀 កំណត់តម្លៃដើមជា OFF (false) តាមសំណើ
   const [borderLive, setBorderLive] = useState(false);
 
   const [mapRotation, setMapRotation] = useState(0);
@@ -167,7 +169,7 @@ export default function Map() {
   const deviceChoiceRef = useRef<'pc' | 'mobile' | null>(null);
   const hasFetchedRef = useRef(false);
 
-  const monthsList = ['ខែមករា', 'ខែកកុម្ភៈ', 'ខែមីនា', 'ខែមេសា', 'ខែឧសភា', 'ខែមិថុនា', 'ខែកក្កដា', 'ខែសីហា', 'ខែតុលា', 'ខែវិច្ឆិកា', 'ខែធ្នូ'];
+  const monthsList = ['ខែមករា', 'ខែកកុម្ភៈ', 'ខែមីនា', 'ខែមេសា', 'ខែឧសភា', 'ខែមិថុនា', 'ខែកក្កដា', 'ខែសីហា', 'ខែកញ្ញា', 'ខែតុលា', 'ខែវិច្ឆិកា', 'ខែធ្នូ'];
 
   useEffect(() => {
     currentUserRef.current = currentUser;
@@ -465,8 +467,51 @@ export default function Map() {
         zoomControl: false, 
         preferCanvas: true,
         renderer: customRenderer,
-        clickTolerance: 10
+        clickTolerance: 15
       }).setView([11.99, 105.46], 15);
+
+      // 🚀 បម្លែងកូអរដោនេ Touch/Click លើ Screen ឱ្យត្រូវចំ LatLng លើ Map 100% ទោះបីជា Map ត្រូវបាន Rotate ឬ Scale ក៏ដោយ
+      mapInstance.current.mouseEventToContainerPoint = function (e: any) {
+        const container = this._container;
+        if (!container) return L.point(0, 0);
+
+        const rotation = (window as any)._currentMapRotation || 0;
+        const scale = (window as any)._currentMapScale || 1.6;
+
+        const parent = container.parentElement || container;
+        const parentRect = parent.getBoundingClientRect();
+        const centerX = parentRect.left + parentRect.width / 2;
+        const centerY = parentRect.top + parentRect.height / 2;
+
+        let clientX = e.clientX;
+        let clientY = e.clientY;
+        if (clientX === undefined && e.touches && e.touches.length > 0) {
+          clientX = e.touches[0].clientX;
+          clientY = e.touches[0].clientY;
+        } else if (clientX === undefined && e.changedTouches && e.changedTouches.length > 0) {
+          clientX = e.changedTouches[0].clientX;
+          clientY = e.changedTouches[0].clientY;
+        }
+
+        if (clientX === undefined) {
+          return L.point(0, 0);
+        }
+
+        const dx = clientX - centerX;
+        const dy = clientY - centerY;
+
+        const rad = (-rotation * Math.PI) / 180;
+        const unrotatedX = dx * Math.cos(rad) - dy * Math.sin(rad);
+        const unrotatedY = dx * Math.sin(rad) + dy * Math.cos(rad);
+
+        const localX = unrotatedX / scale;
+        const localY = unrotatedY / scale;
+
+        return L.point(
+          container.offsetWidth / 2 + localX,
+          container.offsetHeight / 2 + localY
+        );
+      };
 
       mapInstance.current.createPane('bordersPane');
       mapInstance.current.getPane('bordersPane')!.style.zIndex = '350';
