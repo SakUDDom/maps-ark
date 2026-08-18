@@ -4,7 +4,12 @@ import 'leaflet/dist/leaflet.css';
 import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css';
 import L from 'leaflet';
 import '@geoman-io/leaflet-geoman-free';
-import { MapPin, Eraser, Hexagon, Scissors, RotateCw, Search, Slash, Move, LogIn, LogOut, PieChart, Ban, X, Spline, Map as MapIcon, Clock, CheckCircle, RotateCcw, Road, Monitor, Smartphone, Navigation, Loader2, Layers, Building } from 'lucide-react';
+import { 
+  MapPin, Eraser, Hexagon, Scissors, RotateCw, Search, Slash, Move, 
+  LogIn, LogOut, PieChart, Ban, X, Spline, Map as MapIcon, Clock, 
+  CheckCircle, RotateCcw, Road, Monitor, Smartphone, Navigation, 
+  Loader2, Layers, Building, History 
+} from 'lucide-react';
 import { supabaseClient } from '../utils/supabase';
 
 import LoginModal from './LoginModal';
@@ -36,7 +41,6 @@ function extractPolyCoords(geojson: any) {
   return null;
 }
 
-// 🚀 កែសម្រួលប្រព័ន្ធ Drag និងការពារកុំឱ្យរំញ័រម្រាមដៃបដិសេធការចុច (Touch Tolerance & Click Protection)
 if (typeof window !== 'undefined' && !(L.Draggable.prototype as any)._isRotatedPatched) {
   (L.Draggable.prototype as any)._isRotatedPatched = true;
   (L.Draggable.prototype as any)._originalOnMove = L.Draggable.prototype._onMove;
@@ -53,7 +57,6 @@ if (typeof window !== 'undefined' && !(L.Draggable.prototype as any)._isRotatedP
     const currentPoint = L.point(firstTouch.clientX, firstTouch.clientY);
     const screenOffset = currentPoint.subtract(this._startPoint);
 
-    // 🚀 ប្រសិនបើរំញ័រតិចជាង 6px ទុកជាការចុច (Click/Tap) មិនឱ្យរំខានដល់ការបើកផ្ទាំង Point ឡើយ
     if (Math.abs(screenOffset.x) < 6 && Math.abs(screenOffset.y) < 6) {
       return;
     }
@@ -169,6 +172,7 @@ export default function Map() {
   const deviceChoiceRef = useRef<'pc' | 'mobile' | null>(null);
   const hasFetchedRef = useRef(false);
 
+  // 🚀 បញ្ជី ១២ ខែពេញលេញត្រឹមត្រូវ
   const monthsList = ['ខែមករា', 'ខែកកុម្ភៈ', 'ខែមីនា', 'ខែមេសា', 'ខែឧសភា', 'ខែមិថុនា', 'ខែកក្កដា', 'ខែសីហា', 'ខែកញ្ញា', 'ខែតុលា', 'ខែវិច្ឆិកា', 'ខែធ្នូ'];
 
   useEffect(() => {
@@ -470,7 +474,6 @@ export default function Map() {
         clickTolerance: 15
       }).setView([11.99, 105.46], 15);
 
-      // 🚀 បម្លែងកូអរដោនេ Touch/Click លើ Screen ឱ្យត្រូវចំ LatLng លើ Map 100% ទោះបីជា Map ត្រូវបាន Rotate ឬ Scale ក៏ដោយ
       mapInstance.current.mouseEventToContainerPoint = function (e: any) {
         const container = this._container;
         if (!container) return L.point(0, 0);
@@ -835,7 +838,18 @@ export default function Map() {
         let targetMonthIndex = (startIdx + i) % 12; let targetMonthNumber = targetMonthIndex + 1; let targetYear = now.getFullYear();
         if (startIdx + i > 11) { targetYear += Math.floor((startIdx + i) / 12); }
         lastPaidMonthIndex = targetMonthIndex;
-        recordsToInsert.push({ household_id: selectedHome.id, custom_id: selectedHome.custom_id, customer_name: selectedHome.customer_name, amount: feeAmount, month: targetMonthNumber, year: targetYear, status: 'paid', zone: selectedHome.zone, collected_by: currentUserRef.current?.name || '', paid_at: now.toISOString() });
+        recordsToInsert.push({ 
+          household_id: selectedHome.id, 
+          custom_id: selectedHome.custom_id, 
+          customer_name: selectedHome.customer_name, 
+          amount: feeAmount, 
+          month: targetMonthNumber, 
+          year: targetYear, 
+          status: 'paid', 
+          zone: selectedHome.zone, 
+          collected_by: currentUserRef.current?.name || '', 
+          paid_at: now.toISOString() 
+        });
     }
 
     const { error: insertErr } = await supabaseClient.from('payments').insert(recordsToInsert);
@@ -853,11 +867,37 @@ export default function Map() {
     } else { alert(`❌ បរាជ័យក្នុងការ Update ស្ថានភាពផ្ទះ! Error: ${error.message}`); }
   };
 
+  // 🚀 មុខងារបើកប្រវត្តិបង់ប្រាក់ ស្វែងរកតាមទាំង household_id និង custom_id ព្រមគ្នា
   const handleOpenHistory = async () => {
     if (!selectedHome) return;
-    setHistoryModalOpen(true); setIsLoadingHistory(true);
-    const { data, error } = await supabaseClient.from('payments').select('*').eq('household_id', selectedHome.id).order('created_at', { ascending: false });
-    if (error) { alert(`❌ មិនអាចទាញយកប្រវត្តិបានទេ! Error: ${error.message}`); } else if (data) { setHistoryData(data); }
+    setHistoryModalOpen(true); 
+    setIsLoadingHistory(true);
+    
+    let query = supabaseClient.from('payments').select('*');
+    if (selectedHome.id && selectedHome.custom_id) {
+      query = query.or(`household_id.eq.${selectedHome.id},custom_id.eq.${selectedHome.custom_id}`);
+    } else if (selectedHome.id) {
+      query = query.eq('household_id', selectedHome.id);
+    } else if (selectedHome.custom_id) {
+      query = query.eq('custom_id', selectedHome.custom_id);
+    }
+
+    const { data, error } = await query.order('created_at', { ascending: false });
+    
+    if (error) { 
+      // fallback without order
+      const { data: fallbackData } = await supabaseClient
+        .from('payments')
+        .select('*')
+        .eq('custom_id', selectedHome.custom_id);
+      if (fallbackData) {
+        setHistoryData(fallbackData);
+      } else {
+        alert(`❌ មិនអាចទាញយកប្រវត្តិបានទេ! Error: ${error.message}`); 
+      }
+    } else if (data) { 
+      setHistoryData(data); 
+    }
     setIsLoadingHistory(false);
   };
 
@@ -1227,8 +1267,8 @@ export default function Map() {
                     <>
                     <div className="text-center mb-4 text-xs sm:text-sm font-bold text-slate-600 bg-white py-2 rounded-lg border border-slate-200 shadow-sm">ប្រវត្តិបង់ប្រាក់ចុងក្រោយ</div>
                     {historyData.map((record) => {
-                        const dateObj = new Date(record.paid_at || record.created_at);
-                        const formattedDate = `${dateObj.getDate().toString().padStart(2, '0')}/${(dateObj.getMonth()+1).toString().padStart(2, '0')}/${dateObj.getFullYear()} - ${dateObj.getHours().toString().padStart(2, '0')}:${dateObj.getMinutes().toString().padStart(2, '0')}`;
+                        const dateObj = new Date(record.paid_at || record.created_at || Date.now());
+                        const formattedDate = isNaN(dateObj.getTime()) ? '---' : `${dateObj.getDate().toString().padStart(2, '0')}/${(dateObj.getMonth()+1).toString().padStart(2, '0')}/${dateObj.getFullYear()} - ${dateObj.getHours().toString().padStart(2, '0')}:${dateObj.getMinutes().toString().padStart(2, '0')}`;
                         const khmerMonthDisplay = monthsList[record.month - 1] || `ខែទី ${record.month}`;
                         return (
                         <div key={record.id} className="flex justify-between items-center p-3 sm:p-4 bg-white border-l-4 border-emerald-500 rounded-xl shadow-sm mb-3">
