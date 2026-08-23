@@ -1,222 +1,382 @@
 'use client';
-import { useState } from 'react';
-import { CheckCircle, Clock, Download, Home, List, Wallet, CalendarDays, XCircle, ChevronLeft, ChevronRight, UploadCloud, Loader2 } from 'lucide-react';
-import { supabaseClient } from '../utils/supabase';
-import Papa from 'papaparse'; 
+import React, { useState } from 'react';
+import { 
+  Users, CheckCircle2, Clock, XCircle, DollarSign, 
+  Calendar, Download, ChevronLeft, ChevronRight, X, 
+  Receipt, ArrowUpRight
+} from 'lucide-react';
 
-// 🚀 Helper Function សម្រាប់ឆែកថា Point នៅក្នុ្ងង Polygon ឬអត់
-function isPointInPoly(point: [number, number], vs: Array<[number, number]>) {
-  const x = point[0], y = point[1];
-  let inside = false;
-  for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
-    const xi = vs[i][0], yi = vs[i][1];
-    const xj = vs[j][0], yj = vs[j][1];
-    const intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
-    if (intersect) inside = !inside;
-  }
-  return inside;
+interface ReportDashboardProps {
+  currentUser: any;
+  reportZone: string;
+  setReportZone: (zone: string) => void;
+  uniqueZones: string[];
+  handleGlobalMonthChange: (e: any) => void;
+  handleGlobalStatusChange: (e: any) => void;
+  handleExportCSV: () => void;
+  totalHouses: number;
+  paidHouses: number;
+  pendingHouses: number;
+  closedHouses: number;
+  monthlyRevenue: number;
+  dailyRevenue: number;
+  paginatedHouseholds: any[];
+  itemsPerPage: number;
+  setItemsPerPage: (val: number) => void;
+  currentPage: number;
+  setCurrentPage: (page: number | ((prev: number) => number)) => void;
+  totalPages: number;
+  payments?: any[];
 }
 
 export default function ReportDashboard({
-  currentUser, reportZone, setReportZone, uniqueZones,
-  handleGlobalMonthChange, handleGlobalStatusChange, handleExportCSV,
-  totalHouses, paidHouses, pendingHouses, closedHouses,
-  monthlyRevenue, dailyRevenue, paginatedHouseholds,
-  itemsPerPage, setItemsPerPage, currentPage, setCurrentPage, totalPages
-}: any) {
-  const monthsList = ['ខែមករា', 'ខែកកុម្ភៈ', 'ខែមីនា', 'ខែមេសា', 'ខែឧសភា', 'ខែមិថុនា', 'ខែកក្កដា', 'ខែសីហា', 'ខែកញ្ញា', 'ខែតុលា', 'ខែវិច្ឆិកា', 'ខែធ្នូ'];
-  const [isImporting, setIsImporting] = useState(false);
+  currentUser,
+  reportZone,
+  setReportZone,
+  uniqueZones,
+  handleGlobalMonthChange,
+  handleGlobalStatusChange,
+  handleExportCSV,
+  totalHouses,
+  paidHouses,
+  pendingHouses,
+  closedHouses,
+  monthlyRevenue,
+  dailyRevenue,
+  paginatedHouseholds,
+  itemsPerPage,
+  setItemsPerPage,
+  currentPage,
+  setCurrentPage,
+  totalPages,
+  payments = []
+}: ReportDashboardProps) {
+  const [revenueModalType, setRevenueModalType] = useState<'monthly' | 'daily' | null>(null);
 
-  const handleImportCSV = async (e: any) => {
-    const file = e.target.files[0];
-    if (!file) return;
+  const todayStr = new Date().toISOString().split('T')[0];
+  const currentMonthNum = new Date().getMonth() + 1;
+  const currentYearNum = new Date().getFullYear();
 
-    if (!confirm('តើអ្នកពិតជាចង់ Import ទិន្នន័យពី File នេះមែនទេ?')) {
-        e.target.value = null;
-        return;
+  const filteredTransactions = payments.filter((p: any) => {
+    if (revenueModalType === 'daily') {
+      return p.paid_at && p.paid_at.startsWith(todayStr);
     }
-
-    setIsImporting(true);
-
-    try {
-      // 🚀 ទាញយកទិន្នន័យ Zone Borders ទាំងអស់ដើម្បីឆែកទីតាំងអូតូ
-      const { data: zoneBorders } = await supabaseClient.from('zone_borders').select('*');
-
-      Papa.parse(file, {
-        header: true, 
-        skipEmptyLines: true,
-        complete: async (results) => {
-          try {
-            const recordsToInsert = [];
-            let rowIndex = 0;
-            
-            for (const row of results.data as any[]) {
-              let latVal = row['Latitude'] || row['lat'] || row['Lat'] || row['Y'];
-              let lngVal = row['Longitude'] || row['lng'] || row['Lng'] || row['X'];
-              
-              if (row['WKT'] && row['WKT'].includes('POINT')) {
-                  const coords = row['WKT'].replace('POINT (', '').replace(')', '').trim().split(' ');
-                  if (coords.length >= 2) {
-                      lngVal = coords[0]; 
-                      latVal = coords[1]; 
-                  }
-              }
-
-              const nameVal = row['name'] || row['Title'] || row['Name'] || row['ឈ្មោះ'] || row['customer_name'] || 'អតិថិជនថ្មី';
-
-              if (latVal && lngVal) {
-                 rowIndex++;
-                 const ptLng = Number(lngVal);
-                 const ptLat = Number(latVal);
-
-                 // 🚀 ឆែកមើលថាតើ Point នេះស្ថិតនៅក្នុង Zone Border ណាខ្លះអូតូ
-                 let matchedZone = '';
-                 if (zoneBorders && zoneBorders.length > 0) {
-                   for (const border of zoneBorders) {
-                     const polyCoords = border.geojson?.geometry?.coordinates?.[0] || border.geojson?.coordinates?.[0];
-                     if (polyCoords && isPointInPoly([ptLng, ptLat], polyCoords)) {
-                       matchedZone = border.zone || '';
-                       break;
-                     }
-                   }
-                 }
-
-                 const customId = 'ID#' + Math.floor(10000 + Math.random() * 90000) + '-' + rowIndex;
-                 const geojson = { type: "Point", coordinates: [ptLng, ptLat] };
-
-                 recordsToInsert.push({
-                    custom_id: customId,
-                    customer_name: nameVal,
-                    lat: ptLat,
-                    lng: ptLng,
-                    shape_type: 'point',
-                    geojson: geojson,
-                    status_color: 'yellow',
-                    payment_month: 'ខែមករា',
-                    monthly_fee: 10000,
-                    zone: matchedZone // 🚀 ភ្ជាប់ Zone អូតូ ឬទុកចោលបើអត់នៅក្នុង Border
-                 });
-              }
-            }
-
-            if (recordsToInsert.length > 0) {
-              const { error } = await supabaseClient.from('households').insert(recordsToInsert);
-              if (error) throw error;
-              alert(`✅ ទាញយកទិន្នន័យបានចំនួន ${recordsToInsert.length} ទីតាំងជោគជ័យ!`);
-              window.location.reload(); 
-            } else {
-              alert('⚠️ រកមិនឃើញទិន្នន័យ Latitude/Longitude ក្នុង File នេះទេ!');
-            }
-          } catch (error: any) {
-             alert('❌ បរាជ័យក្នុងការ Import: ' + error.message);
-          } finally {
-             setIsImporting(false);
-             e.target.value = null;
-          }
-        }
-      });
-    } catch (err: any) {
-      alert('❌ មានបញ្ហាក្នុងការទាញយក Border: ' + err.message);
-      setIsImporting(false);
+    if (revenueModalType === 'monthly') {
+      return p.month === currentMonthNum && p.year === currentYearNum;
     }
-  };
+    return false;
+  });
+
+  const modalTotal = filteredTransactions.reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
 
   return (
-    <div className="flex-1 w-full h-full overflow-y-auto bg-slate-50 pt-[80px] sm:pt-[100px] p-4 sm:p-6 lg:p-10 relative z-10">
-      <div className="max-w-6xl mx-auto space-y-4 sm:space-y-6">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-100">
-          <div><h2 className="text-xl sm:text-2xl font-bold text-slate-800">របាយការណ៍ទូទៅ</h2><p className="text-xs sm:text-sm text-slate-500 mt-1">ទិន្នន័យស្ថិតិ និងការគ្រប់គ្រង</p></div>
-          <div className="flex gap-2 flex-wrap items-center w-full md:w-auto">
+    <div className="flex-1 bg-slate-50 p-4 sm:p-8 overflow-y-auto mt-[64px]">
+      <div className="max-w-7xl mx-auto space-y-6">
+        
+        {/* ប៊ូតុង និង Filter ផ្នែកខាងលើ */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+          <div>
+            <h2 className="text-xl sm:text-2xl font-black text-slate-800">📊 ផ្ទាំងគ្រប់គ្រង & របាយការណ៍</h2>
+            <p className="text-xs sm:text-sm text-slate-500 font-medium mt-0.5">ស្ថិតិ និងទិន្នន័យប្រមូលប្រាក់ទូទាំងប្រព័ន្ធ</p>
+          </div>
+          
+          <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
             {currentUser?.role === 'super_admin' && (
-              <select value={reportZone} onChange={e => setReportZone(e.target.value)} className="px-3 py-2 border rounded-lg text-xs sm:text-sm bg-indigo-50 font-bold text-indigo-700 outline-none shadow-sm border-indigo-200 cursor-pointer flex-1 md:flex-none">
-                <option value="">🗺️ គ្រប់តំបន់ទាំងអស់</option>
-                {uniqueZones.map((z: any) => <option key={z} value={z}>{z}</option>)}
+              <select 
+                value={reportZone} 
+                onChange={(e) => { setReportZone(e.target.value); setCurrentPage(1); }}
+                className="bg-slate-50 border border-slate-300 text-slate-700 text-xs sm:text-sm font-bold rounded-xl px-3 py-2.5 outline-none focus:border-indigo-500"
+              >
+                <option value="">គ្រប់តំបន់ទាំងអស់ (All Zones)</option>
+                {uniqueZones.map((z: string) => (
+                  <option key={z} value={z}>{z}</option>
+                ))}
               </select>
             )}
-            {['admin', 'super_admin'].includes(currentUser?.role || '') && (
+
+            {['admin', 'super_admin'].includes(currentUser?.role) && (
               <>
-                <select onChange={handleGlobalMonthChange} defaultValue="" className="px-3 py-2 border rounded-lg text-xs sm:text-sm bg-slate-50 font-bold text-slate-700 outline-none cursor-pointer flex-1 md:flex-none">
-                  <option value="" disabled>⚙️ ប្តូរខែរួម</option>
-                  {monthsList.map((m: any) => <option key={m} value={m}>{m}</option>)}
+                <select 
+                  onChange={handleGlobalMonthChange} 
+                  defaultValue=""
+                  className="bg-slate-50 border border-slate-300 text-indigo-700 text-xs sm:text-sm font-bold rounded-xl px-3 py-2.5 outline-none focus:border-indigo-500"
+                >
+                  <option value="" disabled>🗓️ ដូរខែត្រូវបង់ទាំងអស់</option>
+                  {['ខែមករា', 'ខែកុម្ភៈ', 'ខែមីនា', 'ខែមេសា', 'ខែឧសភា', 'ខែមិថុនា', 'ខែកក្កដា', 'ខែសីហា', 'ខែកញ្ញា', 'ខែតុលា', 'ខែវិច្ឆិកា', 'ខែធ្នូ'].map(m => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
                 </select>
-                <select onChange={handleGlobalStatusChange} defaultValue="" className="px-3 py-2 border rounded-lg text-xs sm:text-sm bg-slate-50 font-bold text-slate-700 outline-none cursor-pointer flex-1 md:flex-none">
-                  <option value="" disabled>⚙️ ប្តូរស្ថានភាពរួម</option>
-                  <option value="blue">🔵 បានបង់</option>
-                  <option value="yellow">🟡 មិនទាន់បង់</option>
-                  <option value="red">🔴 បិទ</option>
-                  <option value="black">⚫ បង់តែទុកសិន</option>
+
+                <select 
+                  onChange={handleGlobalStatusChange} 
+                  defaultValue=""
+                  className="bg-slate-50 border border-slate-300 text-amber-700 text-xs sm:text-sm font-bold rounded-xl px-3 py-2.5 outline-none focus:border-indigo-500"
+                >
+                  <option value="" disabled>🎨 ដូរពណ៌ស្ថានភាពទាំងអស់</option>
+                  <option value="yellow">🟡 រង់ចាំបង់ (លឿង)</option>
+                  <option value="blue">🔵 បានបង់ (ខៀវ)</option>
+                  <option value="red">🔴 បិទផ្អាក (ក្រហម)</option>
+                  <option value="black">⚫ មិនទាន់ចុះឈ្មោះ (ខ្មៅ)</option>
                 </select>
               </>
             )}
-            
-            {/* 🚀 ប៊ូតុង Import CSV បង្ហាញតែលើ គណនី Super Admin ប៉ុណ្ណោះ */}
-            {currentUser?.role === 'super_admin' && (
-              <label className={`bg-indigo-50 text-indigo-700 border border-indigo-200 px-3 py-2 rounded-lg text-xs sm:text-sm font-bold hover:bg-indigo-100 shadow-sm flex items-center justify-center cursor-pointer flex-1 md:flex-none w-full md:w-auto transition-all ${isImporting ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                {isImporting ? <Loader2 className="mr-1 animate-spin" size={16} /> : <UploadCloud className="mr-1" size={16} />}
-                {isImporting ? 'កំពុង Import...' : 'Import CSV'}
-                <input type="file" accept=".csv" className="hidden" onChange={handleImportCSV} disabled={isImporting} />
-              </label>
-            )}
 
-            <button onClick={handleExportCSV} className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-2 rounded-lg text-xs sm:text-sm font-bold hover:bg-emerald-100 shadow-sm flex items-center justify-center cursor-pointer flex-1 md:flex-none w-full md:w-auto"><Download className="mr-1" size={16} /> Export CSV</button>
+            <button 
+              onClick={handleExportCSV} 
+              className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm shadow-sm transition-all cursor-pointer"
+            >
+              <Download size={16} /> Export CSV
+            </button>
           </div>
         </div>
 
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between"><div className="flex justify-between items-start mb-2"><span className="text-xs sm:text-sm font-bold text-slate-500">ផ្ទះសរុប</span><div className="p-1.5 sm:p-2 bg-indigo-50 rounded-lg text-indigo-500"><Home className="sm:w-5 sm:h-5" size={18} /></div></div><div className="text-2xl sm:text-3xl font-black text-slate-800">{totalHouses}</div></div>
-          <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between"><div className="flex justify-between items-start mb-2"><span className="text-xs sm:text-sm font-bold text-slate-500">បានបង់</span><div className="p-1.5 sm:p-2 bg-emerald-50 rounded-lg text-emerald-500"><CheckCircle className="sm:w-5 sm:h-5" size={18} /></div></div><div className="text-2xl sm:text-3xl font-black text-emerald-600">{paidHouses}</div></div>
-          <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between"><div className="flex justify-between items-start mb-2"><span className="text-xs sm:text-sm font-bold text-slate-500">រង់ចាំបង់</span><div className="p-1.5 sm:p-2 bg-amber-50 rounded-lg text-amber-500"><Clock className="sm:w-5 sm:h-5" size={18} /></div></div><div className="text-2xl sm:text-3xl font-black text-amber-500">{pendingHouses}</div></div>
-          <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between"><div className="flex justify-between items-start mb-2"><span className="text-xs sm:text-sm font-bold text-slate-500">បិទ</span><div className="p-1.5 sm:p-2 bg-rose-50 rounded-lg text-rose-500"><XCircle className="sm:w-5 sm:h-5" size={18} /></div></div><div className="text-2xl sm:text-3xl font-black text-rose-600">{closedHouses}</div></div>
+        {/* កាតស្ថិតិចំនួនផ្ទះ */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-bold text-slate-400">ផ្ទះសរុប</p>
+              <h3 className="text-2xl font-black text-slate-800 mt-1">{totalHouses.toLocaleString()}</h3>
+            </div>
+            <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center">
+              <Users size={24} />
+            </div>
+          </div>
+
+          <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-bold text-emerald-600">បានបង់</p>
+              <h3 className="text-2xl font-black text-emerald-600 mt-1">{paidHouses.toLocaleString()}</h3>
+            </div>
+            <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center">
+              <CheckCircle2 size={24} />
+            </div>
+          </div>
+
+          <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-bold text-amber-500">រង់ចាំបង់</p>
+              <h3 className="text-2xl font-black text-amber-500 mt-1">{pendingHouses.toLocaleString()}</h3>
+            </div>
+            <div className="w-12 h-12 bg-amber-50 text-amber-500 rounded-2xl flex items-center justify-center">
+              <Clock size={24} />
+            </div>
+          </div>
+
+          <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-bold text-rose-500">បិទ</p>
+              <h3 className="text-2xl font-black text-rose-500 mt-1">{closedHouses.toLocaleString()}</h3>
+            </div>
+            <div className="w-12 h-12 bg-rose-50 text-rose-500 rounded-2xl flex items-center justify-center">
+              <XCircle size={24} />
+            </div>
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
-          <div className="bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-100"><div className="flex justify-between items-center mb-3 sm:mb-4"><h3 className="font-bold text-slate-800 text-sm sm:text-base">ចំណូលប្រចាំខែនេះ</h3><div className="p-1.5 sm:p-2 bg-emerald-50 rounded-lg text-emerald-500"><Wallet className="sm:w-6 sm:h-6" size={20} /></div></div><div className="text-2xl sm:text-4xl font-black text-emerald-600">{monthlyRevenue.toLocaleString()} ៛</div></div>
-          <div className="bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-100 border-l-4 border-l-indigo-500"><div className="flex justify-between items-center mb-3 sm:mb-4"><h3 className="font-bold text-slate-800 text-sm sm:text-base">ចំណូលប្រចាំថ្ងៃនេះ (Today)</h3><div className="p-1.5 sm:p-2 bg-indigo-50 rounded-lg text-indigo-500"><CalendarDays className="sm:w-6 sm:h-6" size={20} /></div></div><div className="text-2xl sm:text-4xl font-black text-indigo-600">{dailyRevenue.toLocaleString()} ៛</div></div>
+        {/* 🚀 កាតចំណូលដែលអាចចុចបើកផ្ទាំងប្រតិបត្តិការបាន (Clickable Revenue Cards) */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div 
+            onClick={() => setRevenueModalType('monthly')}
+            className="bg-white p-6 rounded-2xl shadow-sm border-2 border-emerald-100 hover:border-emerald-400 hover:shadow-md transition-all cursor-pointer group flex items-center justify-between"
+          >
+            <div>
+              <div className="flex items-center gap-2">
+                <p className="text-xs sm:text-sm font-bold text-slate-500">ចំណូលប្រចាំខែនេះ</p>
+                <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 flex items-center gap-0.5 group-hover:bg-emerald-600 group-hover:text-white transition-colors">
+                  ចុចមើលប្រតិបត្តិការ <ArrowUpRight size={12} />
+                </span>
+              </div>
+              <h3 className="text-3xl font-black text-emerald-600 mt-2">{monthlyRevenue.toLocaleString()} ៛</h3>
+            </div>
+            <div className="w-14 h-14 bg-emerald-50 group-hover:bg-emerald-500 text-emerald-600 group-hover:text-white rounded-2xl flex items-center justify-center transition-colors">
+              <DollarSign size={28} />
+            </div>
+          </div>
+
+          <div 
+            onClick={() => setRevenueModalType('daily')}
+            className="bg-white p-6 rounded-2xl shadow-sm border-2 border-blue-100 hover:border-blue-400 hover:shadow-md transition-all cursor-pointer group flex items-center justify-between"
+          >
+            <div>
+              <div className="flex items-center gap-2">
+                <p className="text-xs sm:text-sm font-bold text-slate-500">ចំណូលប្រចាំថ្ងៃនេះ (Today)</p>
+                <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200 flex items-center gap-0.5 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                  ចុចមើលប្រតិបត្តិការ <ArrowUpRight size={12} />
+                </span>
+              </div>
+              <h3 className="text-3xl font-black text-blue-600 mt-2">{dailyRevenue.toLocaleString()} ៛</h3>
+            </div>
+            <div className="w-14 h-14 bg-blue-50 group-hover:bg-blue-500 text-blue-600 group-hover:text-white rounded-2xl flex items-center justify-center transition-colors">
+              <Calendar size={28} />
+            </div>
+          </div>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-          <div className="px-4 sm:px-6 py-4 sm:py-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-            <h3 className="font-bold text-slate-800 flex items-center text-sm sm:text-base"><List className="mr-2 text-indigo-500" size={18} />បញ្ជីឈ្មោះអតិថិជន</h3>
+        {/* តារាងបញ្ជីផ្ទះ */}
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+          <div className="p-5 border-b border-slate-100 flex justify-between items-center">
+            <h3 className="font-bold text-slate-800 text-base">បញ្ជីព័ត៌មានផ្ទះ</h3>
             <div className="flex items-center gap-2">
-              <span className="text-[10px] sm:text-xs text-slate-500 font-bold hidden sm:inline">បង្ហាញ៖</span>
-              <select value={itemsPerPage} onChange={e => {setItemsPerPage(Number(e.target.value)); setCurrentPage(1);}} className="border px-2 py-1 rounded text-xs sm:text-sm outline-none font-bold text-indigo-700 bg-white shadow-sm cursor-pointer">
-                <option value="10">10 ជួរ</option><option value="50">50 ជួរ</option><option value="100">100 ជួរ</option>
+              <span className="text-xs text-slate-500 font-bold">បង្ហាញ៖</span>
+              <select 
+                value={itemsPerPage} 
+                onChange={(e) => { setItemsPerPage(Number(e.target.value)); setCurrentPage(1); }}
+                className="text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 outline-none"
+              >
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+                <option value={50}>50</option>
               </select>
             </div>
           </div>
+
           <div className="overflow-x-auto">
-            <table className="w-full text-xs sm:text-sm text-left text-slate-600">
-              <thead className="bg-slate-100/50 text-slate-500 font-bold border-b">
-                <tr><th className="px-4 sm:px-6 py-3 sm:py-4">លេខកូដ</th><th className="px-4 sm:px-6 py-3 sm:py-4">ឈ្មោះ</th><th className="px-4 sm:px-6 py-3 sm:py-4">តំបន់</th><th className="px-4 sm:px-6 py-3 sm:py-4">ខែត្រូវបង់</th><th className="px-4 sm:px-6 py-3 sm:py-4">ស្ថានភាព</th></tr>
+            <table className="w-full text-left text-xs sm:text-sm">
+              <thead className="bg-slate-50 text-slate-500 uppercase text-[11px] font-bold border-b border-slate-100">
+                <tr>
+                  <th className="px-5 py-3.5">លេខកូដ (ID)</th>
+                  <th className="px-5 py-3.5">ឈ្មោះអតិថិជន</th>
+                  <th className="px-5 py-3.5">តម្លៃសេវា</th>
+                  <th className="px-5 py-3.5">ខែត្រូវបង់</th>
+                  <th className="px-5 py-3.5">តំបន់ (Zone)</th>
+                  <th className="px-5 py-3.5 text-center">ស្ថានភាព</th>
+                </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
-                {paginatedHouseholds.length === 0 && <tr><td colSpan={5} className="text-center py-6 font-bold text-slate-400">គ្មានទិន្នន័យទេ</td></tr>}
-                {paginatedHouseholds.map((h: any) => (
-                  <tr key={h.id} className="hover:bg-slate-50 transition-colors whitespace-nowrap">
-                    <td className="px-4 sm:px-6 py-3 sm:py-4 font-bold text-slate-800">{h.custom_id}</td>
-                    <td className="px-4 sm:px-6 py-3 sm:py-4 font-bold">{h.customer_name || '---'}</td>
-                    <td className="px-4 sm:px-6 py-3 sm:py-4">{h.zone || '---'}</td>
-                    <td className="px-4 sm:px-6 py-3 sm:py-4">{h.payment_month}</td>
-                    <td className="px-4 sm:px-6 py-3 sm:py-4">
-                      {h.status_color === 'blue' ? <span className="px-2 sm:px-3 py-1 bg-emerald-100 text-emerald-700 rounded-lg text-[10px] sm:text-xs font-bold border border-emerald-200">🔵 បានបង់</span> :
-                      h.status_color === 'yellow' ? <span className="px-2 sm:px-3 py-1 bg-amber-100 text-amber-700 rounded-lg text-[10px] sm:text-xs font-bold border border-amber-200">🟡 មិនទាន់បង់</span> :
-                      h.status_color === 'red' ? <span className="px-2 sm:px-3 py-1 bg-rose-100 text-rose-700 rounded-lg text-[10px] sm:text-xs font-bold border border-rose-200">🔴 បិទ</span> :
-                      <span className="px-2 sm:px-3 py-1 bg-slate-200 text-slate-800 rounded-lg text-[10px] sm:text-xs font-bold border border-slate-300">⚫ ទុកសិន</span>}
-                    </td>
+              <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                {paginatedHouseholds.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="text-center py-8 text-slate-400 font-bold">មិនមានទិន្នន័យទេ</td>
                   </tr>
-                ))}
+                ) : (
+                  paginatedHouseholds.map((h: any) => (
+                    <tr key={h.id} className="hover:bg-slate-50/80 transition-colors">
+                      <td className="px-5 py-3.5 font-bold text-indigo-700">{h.custom_id}</td>
+                      <td className="px-5 py-3.5 font-bold">{h.customer_name || 'មិនមានឈ្មោះ'}</td>
+                      <td className="px-5 py-3.5 font-bold text-emerald-600">៛ {Number(h.monthly_fee || 0).toLocaleString()}</td>
+                      <td className="px-5 py-3.5">{h.payment_month || '---'}</td>
+                      <td className="px-5 py-3.5 font-bold text-slate-500">{h.zone || '---'}</td>
+                      <td className="px-5 py-3.5 text-center">
+                        <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold ${
+                          h.status_color === 'blue' ? 'bg-blue-100 text-blue-700' :
+                          h.status_color === 'red' ? 'bg-rose-100 text-rose-700' :
+                          h.status_color === 'black' ? 'bg-slate-800 text-white' :
+                          'bg-amber-100 text-amber-700'
+                        }`}>
+                          {h.status_color === 'blue' ? 'បានបង់' : h.status_color === 'red' ? 'បិទ' : h.status_color === 'black' ? 'មិនចុះឈ្មោះ' : 'រង់ចាំបង់'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
-          <div className="px-4 sm:px-6 py-3 sm:py-4 border-t border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-3 sm:gap-0 bg-slate-50">
-            <span className="text-[10px] sm:text-xs text-slate-500 font-bold">បង្ហាញ {(currentPage-1)*itemsPerPage + 1} - {Math.min(currentPage*itemsPerPage, totalHouses)} នៃ {totalHouses}</span>
-            <div className="flex gap-2">
-              <button onClick={() => setCurrentPage((p: number) => Math.max(1, p - 1))} disabled={currentPage === 1} className="px-3 py-1.5 bg-white border rounded text-slate-600 hover:bg-slate-100 disabled:opacity-50 text-xs sm:text-sm font-bold flex items-center cursor-pointer"><ChevronLeft className="mr-1" size={16} /> ថយក្រោយ</button>
-              <button onClick={() => setCurrentPage((p: number) => Math.min(totalPages, p + 1))} disabled={currentPage >= totalPages} className="px-3 py-1.5 bg-white border rounded text-slate-600 hover:bg-slate-100 disabled:opacity-50 text-xs sm:text-sm font-bold flex items-center cursor-pointer">ទៅមុខ <ChevronRight className="ml-1" size={16} /></button>
+
+          {/* Pagination */}
+          <div className="p-4 border-t border-slate-100 flex items-center justify-between">
+            <span className="text-xs text-slate-500 font-bold">
+              ទំព័រទី {currentPage} នៃ {totalPages || 1}
+            </span>
+            <div className="flex items-center gap-1">
+              <button 
+                disabled={currentPage === 1} 
+                onClick={() => setCurrentPage(p => Math.max(p - 1, 1))}
+                className="p-2 rounded-lg border border-slate-200 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+              >
+                <ChevronLeft size={16} />
+              </button>
+              <button 
+                disabled={currentPage >= totalPages} 
+                onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))}
+                className="p-2 rounded-lg border border-slate-200 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+              >
+                <ChevronRight size={16} />
+              </button>
             </div>
           </div>
         </div>
+
       </div>
+
+      {/* 🚀 ផ្ទាំង Pop-up បង្ហាញបញ្ជីប្រតិបត្តិការចំណូល (Transaction Detail Modal) */}
+      {revenueModalType && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden border border-slate-200">
+            
+            {/* Modal Header */}
+            <div className="p-5 border-b border-slate-100 bg-slate-50/80 flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${revenueModalType === 'daily' ? 'bg-blue-100 text-blue-600' : 'bg-emerald-100 text-emerald-600'}`}>
+                  <Receipt size={22} />
+                </div>
+                <div>
+                  <h3 className="font-black text-slate-800 text-base sm:text-lg">
+                    {revenueModalType === 'daily' ? '📅 ប្រតិបត្តិការចំណូលប្រចាំថ្ងៃនេះ (Today)' : '🗓️ ប្រតិបត្តិការចំណូលប្រចាំខែនេះ'}
+                  </h3>
+                  <p className="text-xs text-slate-500 font-bold mt-0.5">
+                    សរុបទឹកប្រាក់៖ <span className="text-emerald-600 font-black">៛ {modalTotal.toLocaleString()}</span> ({filteredTransactions.length} ប្រតិបត្តិការ)
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setRevenueModalType(null)} 
+                className="w-8 h-8 rounded-full bg-white border border-slate-200 text-slate-400 hover:text-rose-500 flex items-center justify-center shadow-sm cursor-pointer transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-4 overflow-y-auto flex-1 divide-y divide-slate-100 bg-slate-50/50 space-y-2">
+              {filteredTransactions.length === 0 ? (
+                <div className="text-center py-12 bg-white rounded-2xl border border-slate-200">
+                  <Receipt className="mx-auto text-slate-300 mb-2" size={40} />
+                  <p className="font-bold text-slate-500 text-sm">មិនទាន់មានប្រតិបត្តិការបង់ប្រាក់នៅឡើយទេ</p>
+                </div>
+              ) : (
+                filteredTransactions.map((tx: any) => {
+                  const d = new Date(tx.paid_at || tx.created_at || Date.now());
+                  const formattedTime = isNaN(d.getTime()) ? '---' : `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')} - ${d.getDate().toString().padStart(2, '0')}/${(d.getMonth()+1).toString().padStart(2, '0')}/${d.getFullYear()}`;
+                  return (
+                    <div key={tx.id} className="p-3.5 bg-white rounded-xl border border-slate-200/80 shadow-sm flex items-center justify-between">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-indigo-700 text-sm">{tx.custom_id || 'ID#---'}</span>
+                          <span className="text-xs font-bold text-slate-800">({tx.customer_name || 'មិនមានឈ្មោះ'})</span>
+                        </div>
+                        <div className="text-[11px] text-slate-500 font-medium mt-1 flex items-center gap-3">
+                          <span>🕒 {formattedTime}</span>
+                          <span>📍 តំបន់៖ <b>{tx.zone || '---'}</b></span>
+                          {tx.collected_by && <span>👤 អ្នកប្រមូល៖ <b>{tx.collected_by}</b></span>}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-black text-emerald-600 text-sm sm:text-base">
+                          +៛ {Number(tx.amount || 0).toLocaleString()}
+                        </div>
+                        <span className="text-[10px] font-bold bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full border border-emerald-100">
+                          ជោគជ័យ
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 bg-white border-t border-slate-100 flex justify-end">
+              <button 
+                onClick={() => setRevenueModalType(null)}
+                className="px-5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl cursor-pointer transition-all"
+              >
+                បិទផ្ទាំង
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
     </div>
   );
 }

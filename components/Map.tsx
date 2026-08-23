@@ -125,6 +125,9 @@ export default function Map() {
   const roadsLayer = useRef<L.FeatureGroup | null>(null);
   const bordersLayer = useRef<L.FeatureGroup | null>(null);
   const locationMarkerRef = useRef<L.Marker | null>(null);
+  
+  // 🚀 Ref ការពារកុំឱ្យ GPS Update flyTo ផ្ទួនៗបណ្តាលឱ្យ Zoom Out
+  const hasCenteredGPSRef = useRef<boolean>(false);
 
   const activeDrawTool = useRef<string>('point'); 
   const borderModeRef = useRef<'zone' | 'admin'>('zone'); 
@@ -172,7 +175,6 @@ export default function Map() {
   const deviceChoiceRef = useRef<'pc' | 'mobile' | null>(null);
   const hasFetchedRef = useRef(false);
 
-  // 🚀 បញ្ជី ១២ ខែពេញលេញត្រឹមត្រូវ
   const monthsList = ['ខែមករា', 'ខែកកុម្ភៈ', 'ខែមីនា', 'ខែមេសា', 'ខែឧសភា', 'ខែមិថុនា', 'ខែកក្កដា', 'ខែសីហា', 'ខែកញ្ញា', 'ខែតុលា', 'ខែវិច្ឆិកា', 'ខែធ្នូ'];
 
   useEffect(() => {
@@ -273,15 +275,22 @@ export default function Map() {
     };
   }, [mapRotation]);
 
+  // 🚀 GPS Tracking គ្មានបញ្ហា Auto Zoom Out
   useEffect(() => {
     if (deviceChoice === 'mobile' && mapInstance.current) {
-        mapInstance.current.locate({ watch: true, enableHighAccuracy: true });
+        mapInstance.current.locate({ watch: true, enableHighAccuracy: true, setView: false });
         mapInstance.current.on('locationfound', (e: any) => {
             if (!locationMarkerRef.current) {
                 const liveIcon = L.divIcon({ className: 'clear-default-icon', html: `<div class="live-location-pulse"></div><div class="live-location-dot"></div>`, iconSize: [28, 28], iconAnchor: [14, 14] });
                 locationMarkerRef.current = L.marker(e.latlng, { icon: liveIcon, pane: 'pointsPane' }).addTo(mapInstance.current!);
-                mapInstance.current?.flyTo(e.latlng, 17, { animate: true, duration: 1.5 });
-            } else { locationMarkerRef.current.setLatLng(e.latlng); }
+                
+                if (!hasCenteredGPSRef.current) {
+                  hasCenteredGPSRef.current = true;
+                  mapInstance.current?.flyTo(e.latlng, 17, { animate: true, duration: 1.2 });
+                }
+            } else { 
+                locationMarkerRef.current.setLatLng(e.latlng); 
+            }
         });
         mapInstance.current.on('locationerror', (e: any) => { console.warn("មិនអាចចាប់ទីតាំងបានទេ៖ ", e.message); });
     } else if (deviceChoice === 'pc' && mapInstance.current) {
@@ -471,7 +480,9 @@ export default function Map() {
         zoomControl: false, 
         preferCanvas: true,
         renderer: customRenderer,
-        clickTolerance: 15
+        clickTolerance: 15,
+        maxZoom: 22,
+        bounceAtZoomLimits: false
       }).setView([11.99, 105.46], 15);
 
       mapInstance.current.mouseEventToContainerPoint = function (e: any) {
@@ -529,7 +540,11 @@ export default function Map() {
       mapInstance.current.getPane('pointsPane')!.style.zIndex = '650';
 
       L.control.zoom({ position: 'bottomright' }).addTo(mapInstance.current);
-      L.tileLayer('https://{s}.google.com/vt/lyrs=s,h&x={x}&y={y}&z={z}', { maxZoom: 21, subdomains: ['mt0', 'mt1', 'mt2', 'mt3'] }).addTo(mapInstance.current);
+      L.tileLayer('https://{s}.google.com/vt/lyrs=s,h&x={x}&y={y}&z={z}', { 
+        maxZoom: 22, 
+        maxNativeZoom: 20, 
+        subdomains: ['mt0', 'mt1', 'mt2', 'mt3'] 
+      }).addTo(mapInstance.current);
 
       if (mapInstance.current.pm) {
         const pmInstance = mapInstance.current.pm as any;
@@ -867,7 +882,6 @@ export default function Map() {
     } else { alert(`❌ បរាជ័យក្នុងការ Update ស្ថានភាពផ្ទះ! Error: ${error.message}`); }
   };
 
-  // 🚀 មុខងារបើកប្រវត្តិបង់ប្រាក់ ស្វែងរកតាមទាំង household_id និង custom_id ព្រមគ្នា
   const handleOpenHistory = async () => {
     if (!selectedHome) return;
     setHistoryModalOpen(true); 
@@ -885,7 +899,6 @@ export default function Map() {
     const { data, error } = await query.order('created_at', { ascending: false });
     
     if (error) { 
-      // fallback without order
       const { data: fallbackData } = await supabaseClient
         .from('payments')
         .select('*')
@@ -937,11 +950,12 @@ export default function Map() {
 
   const openReport = async () => {
     setActiveView('report');
-    if (paymentsData.length === 0) {
-        let query = supabaseClient.from('payments').select('*');
-        if (currentUserRef.current && currentUserRef.current.role !== 'super_admin') { query = query.eq('zone', currentUserRef.current.name); }
-        const { data } = await query; if (data) setPaymentsData(data);
+    let query = supabaseClient.from('payments').select('*');
+    if (currentUserRef.current && currentUserRef.current.role !== 'super_admin') { 
+      query = query.eq('zone', currentUserRef.current.name); 
     }
+    const { data } = await query; 
+    if (data) setPaymentsData(data);
   };
 
   const handleGlobalMonthChange = async (e: any) => {
@@ -1255,6 +1269,7 @@ export default function Map() {
                 currentPage={currentPage}
                 setCurrentPage={setCurrentPage}
                 totalPages={totalPages}
+                payments={filteredPayments}
             />
         )}
 
