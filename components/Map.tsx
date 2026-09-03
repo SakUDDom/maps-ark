@@ -7,7 +7,7 @@ import '@geoman-io/leaflet-geoman-free';
 import { 
   MapPin, Eraser, Hexagon, Scissors, RotateCw, Search, Slash, Move, 
   LogIn, LogOut, PieChart, Ban, X, Spline, Map as MapIcon, 
-  Monitor, Smartphone, Navigation, Loader2, Layers, Building 
+  Road, Monitor, Smartphone, Navigation, Loader2, Layers, Building 
 } from 'lucide-react';
 import { supabaseClient } from '../utils/supabase';
 import { KHMER_MONTHS } from '../constants/months';
@@ -41,46 +41,6 @@ function extractPolyCoords(geojson: any) {
     return geojson.coordinates[0];
   }
   return null;
-}
-
-if (typeof window !== 'undefined' && !(L.Draggable.prototype as any)._isRotatedPatched) {
-  (L.Draggable.prototype as any)._isRotatedPatched = true;
-  (L.Draggable.prototype as any)._originalOnMove = L.Draggable.prototype._onMove;
-  
-  (L.Draggable.prototype as any)._onMove = function (e: any) {
-    if (!this._enabled) { return; }
-
-    const rotation = (window as any)._currentMapRotation || 0;
-    const scale = (window as any)._currentMapScale || 1.6;
-
-    const firstTouch = e.touches && e.touches.length > 0 ? e.touches[0] : e;
-    if (!firstTouch || !this._startPoint) return;
-
-    const currentPoint = L.point(firstTouch.clientX, firstTouch.clientY);
-    const screenOffset = currentPoint.subtract(this._startPoint);
-
-    if (Math.abs(screenOffset.x) < 6 && Math.abs(screenOffset.y) < 6) {
-      return;
-    }
-
-    this._moved = true;
-
-    if (rotation === 0 && scale === 1) {
-      return (L.Draggable.prototype as any)._originalOnMove.call(this, e);
-    }
-
-    const rad = (-rotation * Math.PI) / 180;
-    const rotatedX = (screenOffset.x * Math.cos(rad) - screenOffset.y * Math.sin(rad)) / scale;
-    const rotatedY = (screenOffset.x * Math.sin(rad) + screenOffset.y * Math.cos(rad)) / scale;
-
-    this._newPos = this._startPos.add(L.point(rotatedX, rotatedY));
-
-    if (e.touches && e.touches.length > 1) return;
-
-    if (e.preventDefault) e.preventDefault();
-    this._updatePosition();
-    this.fire('drag');
-  };
 }
 
 const Toggle = ({ enabled, setEnabled }: { enabled: boolean, setEnabled: (val: boolean) => void }) => (
@@ -171,27 +131,14 @@ export default function Map() {
   const [zoneBorderToggle, setZoneBorderToggle] = useState(false);
   const [adminBorderToggle, setAdminBorderToggle] = useState(false);
 
-  const [mapRotation, setMapRotation] = useState(0);
-  const initialTouchAngleRef = useRef<number | null>(null);
-  const initialRotationRef = useRef<number>(0);
-
   const currentUserRef = useRef<any>(null);
   const allDataRef = useRef<any[]>([]);
   const deviceChoiceRef = useRef<'pc' | 'mobile' | null>(null);
   const hasFetchedRef = useRef(false);
 
-  useEffect(() => {
-    currentUserRef.current = currentUser;
-  }, [currentUser]);
-
+  useEffect(() => { currentUserRef.current = currentUser; }, [currentUser]);
   useEffect(() => { deviceChoiceRef.current = deviceChoice; }, [deviceChoice]);
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      (window as any)._currentMapRotation = mapRotation;
-      (window as any)._currentMapScale = 1.6;
-    }
-  }, [mapRotation]);
+  useEffect(() => { allDataRef.current = allData; }, [allData]);
 
   const isGeomanBusy = () => {
     const pm = mapInstance.current?.pm as any;
@@ -247,53 +194,11 @@ export default function Map() {
     }
   }, [currentUser, isMapReady]);
 
-  useEffect(() => { allDataRef.current = allData; }, [allData]);
-
-  useEffect(() => {
-    const container = mapRef.current;
-    if (!container) return;
-
-    const getAngle = (t1: Touch, t2: Touch) => {
-      const dx = t2.clientX - t1.clientX;
-      const dy = t2.clientY - t1.clientY;
-      return (Math.atan2(dy, dx) * 180) / Math.PI;
-    };
-
-    const handleTouchStart = (e: TouchEvent) => {
-      if (e.touches.length === 2) {
-        initialTouchAngleRef.current = getAngle(e.touches[0], e.touches[1]);
-        initialRotationRef.current = mapRotation;
-      }
-    };
-
-    const handleTouchMove = (e: TouchEvent) => {
-      if (e.touches.length === 2 && initialTouchAngleRef.current !== null) {
-        const currentAngle = getAngle(e.touches[0], e.touches[1]);
-        const delta = currentAngle - initialTouchAngleRef.current;
-        setMapRotation((initialRotationRef.current + delta) % 360);
-      }
-    };
-
-    const handleTouchEnd = (e: TouchEvent) => {
-      if (e.touches.length < 2) {
-        initialTouchAngleRef.current = null;
-      }
-    };
-
-    container.addEventListener('touchstart', handleTouchStart);
-    container.addEventListener('touchmove', handleTouchMove);
-    container.addEventListener('touchend', handleTouchEnd);
-
-    return () => {
-      container.removeEventListener('touchstart', handleTouchStart);
-      container.removeEventListener('touchmove', handleTouchMove);
-      container.removeEventListener('touchend', handleTouchEnd);
-    };
-  }, [mapRotation]);
-
+  // 🚀 GPS Live Location សម្រាប់ Mobile
   useEffect(() => {
     if (deviceChoice === 'mobile' && mapInstance.current) {
         mapInstance.current.locate({ watch: true, enableHighAccuracy: true, setView: false });
+        
         mapInstance.current.on('locationfound', (e: any) => {
             if (!locationMarkerRef.current) {
                 const liveIcon = L.divIcon({ 
@@ -302,7 +207,7 @@ export default function Map() {
                   iconSize: [28, 28], 
                   iconAnchor: [14, 14] 
                 });
-                locationMarkerRef.current = L.marker(e.latlng, { icon: liveIcon, pane: 'pointsPane' }).addTo(mapInstance.current!);
+                locationMarkerRef.current = L.marker(e.latlng, { icon: liveIcon }).addTo(mapInstance.current!);
                 
                 locationAccuracyRef.current = L.circle(e.latlng, {
                   radius: e.accuracy || 15,
@@ -339,10 +244,12 @@ export default function Map() {
   }, [deviceChoice]);
 
   const handleLocateMe = () => {
-      if (deviceChoice === 'mobile' && mapInstance.current) mapInstance.current.locate({ setView: true, maxZoom: 18, enableHighAccuracy: true });
+    if (mapInstance.current && locationMarkerRef.current) {
+      mapInstance.current.flyTo(locationMarkerRef.current.getLatLng(), 18, { animate: true, duration: 1 });
+    } else if (mapInstance.current) {
+      mapInstance.current.locate({ setView: true, maxZoom: 18, enableHighAccuracy: true });
+    }
   };
-
-  const resetMapNorth = () => { setMapRotation(0); };
 
   const handleSelectHousehold = async (h: any) => {
     if (isGeomanBusy()) return;
@@ -404,15 +311,15 @@ export default function Map() {
 
   const addHouseholdToMap = (h: any) => {
     let colorHex = h.status_color === 'blue' ? '#2563eb' : h.status_color === 'red' ? '#dc2626' : h.status_color === 'black' ? '#020617' : '#f59e0b';
-    const isMobileChoice = deviceChoiceRef.current === 'mobile';
-    const pointRadius = isMobileChoice ? 4.5 : 5;
+    const isMobile = deviceChoiceRef.current === 'mobile';
+    const pointRadius = isMobile ? 5 : 5.5;
 
     if (h.shape_type === 'point' && h.lat && h.lng) {
       const pointMarker = L.circleMarker([h.lat, h.lng], { 
         radius: pointRadius, 
         fillColor: colorHex, 
         color: '#ffffff', 
-        weight: 1.2, 
+        weight: 1.5, 
         fillOpacity: 0.95
       });
       pointMarker.options.dbId = h.id;
@@ -448,6 +355,7 @@ export default function Map() {
         });
 
         subLayer.on('dblclick', (e: any) => {
+          if (deviceChoiceRef.current === 'mobile') return;
           L.DomEvent.stopPropagation(e);
           if (!currentUserRef.current) {
             alert('🔒 សូមចូលគណនី (Login) ជាមុនសិន!');
@@ -477,7 +385,7 @@ export default function Map() {
         style: { color: roadColor, weight: 6, opacity: 0.9 } 
       }); 
       
-      const tooltipContent = `<div class="text-center unrotate-element"><b>${r.name || 'មិនមានឈ្មោះផ្លូវ'}</b><br><span class="text-xs text-slate-500">${r.road_type || 'Land road'} | ទំហំ: ${r.width || 'មិនបញ្ជាក់'}</span></div>`;
+      const tooltipContent = `<div class="text-center"><b>${r.name || 'មិនមានឈ្មោះផ្លូវ'}</b><br><span class="text-xs text-slate-500">${r.road_type || 'Land road'} | ទំហំ: ${r.width || 'មិនបញ្ជាក់'}</span></div>`;
       layer.bindTooltip(tooltipContent, { sticky: true, className: 'font-bold' });
 
       (layer as any).options.dbId = r.id;
@@ -508,6 +416,7 @@ export default function Map() {
         });
 
         l.on('dblclick', (e: any) => {
+          if (deviceChoiceRef.current === 'mobile') return;
           L.DomEvent.stopPropagation(e);
           if (!currentUserRef.current) {
             alert('🔒 សូមចូលគណនី (Login) ជាមុនសិន!');
@@ -540,7 +449,7 @@ export default function Map() {
       const iconPrefix = isAdmin ? '🏙️' : '📍';
       const labelText = `${iconPrefix} ${displayZone}`;
       
-      layer.bindTooltip(`<div class="unrotate-element ${watermarkClass}">${labelText}</div>`, { 
+      layer.bindTooltip(`<div class="${watermarkClass}">${labelText}</div>`, { 
         permanent: true, 
         direction: 'center', 
         className: 'clear-tooltip-bg' 
@@ -577,7 +486,7 @@ export default function Map() {
               
               const updatedLabel = `${iconPrefix} ${newZoneName.trim()}`;
               layer.unbindTooltip();
-              layer.bindTooltip(`<div class="unrotate-element ${watermarkClass}">${updatedLabel}</div>`, { 
+              layer.bindTooltip(`<div class="${watermarkClass}">${updatedLabel}</div>`, { 
                 permanent: true, 
                 direction: 'center', 
                 className: 'clear-tooltip-bg' 
@@ -586,6 +495,7 @@ export default function Map() {
         });
 
         l.on('dblclick', (e: any) => {
+          if (deviceChoiceRef.current === 'mobile') return;
           L.DomEvent.stopPropagation(e);
           if (!currentUserRef.current) {
             alert('🔒 សូមចូលគណនី (Login) ជាមុនសិន!');
@@ -651,55 +561,17 @@ export default function Map() {
     L.Icon.Default.mergeOptions({ iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png', iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png', shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png' });
 
     if (typeof window !== 'undefined' && mapRef.current && !mapInstance.current) {
+      // 🚀 Native Smooth Scrolling & High Touch Tolerance
       mapInstance.current = L.map(mapRef.current, { 
         zoomControl: false, 
         preferCanvas: false,
         doubleClickZoom: false,
+        clickTolerance: 30, // ងាយប៉ះលើ Mobile
         maxZoom: 22,
-        bounceAtZoomLimits: false
+        bounceAtZoomLimits: false,
+        inertia: true,
+        inertiaDeceleration: 3000
       }).setView([11.99, 105.46], 15);
-
-      mapInstance.current.mouseEventToContainerPoint = function (e: any) {
-        const container = this._container;
-        if (!container) return L.point(0, 0);
-
-        const rotation = (window as any)._currentMapRotation || 0;
-        const scale = (window as any)._currentMapScale || 1.6;
-
-        const parent = container.parentElement || container;
-        const parentRect = parent.getBoundingClientRect();
-        const centerX = parentRect.left + parentRect.width / 2;
-        const centerY = parentRect.top + parentRect.height / 2;
-
-        let clientX = e.clientX;
-        let clientY = e.clientY;
-        if (clientX === undefined && e.touches && e.touches.length > 0) {
-          clientX = e.touches[0].clientX;
-          clientY = e.touches[0].clientY;
-        } else if (clientX === undefined && e.changedTouches && e.changedTouches.length > 0) {
-          clientX = e.changedTouches[0].clientX;
-          clientY = e.changedTouches[0].clientY;
-        }
-
-        if (clientX === undefined) {
-          return L.point(0, 0);
-        }
-
-        const dx = clientX - centerX;
-        const dy = clientY - centerY;
-
-        const rad = (-rotation * Math.PI) / 180;
-        const unrotatedX = dx * Math.cos(rad) - dy * Math.sin(rad);
-        const unrotatedY = dx * Math.sin(rad) + dy * Math.cos(rad);
-
-        const localX = unrotatedX / scale;
-        const localY = unrotatedY / scale;
-
-        return L.point(
-          container.offsetWidth / 2 + localX,
-          container.offsetHeight / 2 + localY
-        );
-      };
 
       L.control.zoom({ position: 'bottomright' }).addTo(mapInstance.current);
       L.tileLayer('https://{s}.google.com/vt/lyrs=s,h&x={x}&y={y}&z={z}', { 
@@ -1340,11 +1212,6 @@ export default function Map() {
         .live-location-dot { width: 14px; height: 14px; background-color: #2563eb; border: 3px solid white; border-radius: 50%; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 2; box-shadow: 0 2px 4px rgba(0,0,0,0.3); }
         .live-location-pulse { width: 40px; height: 40px; background-color: rgba(37, 99, 235, 0.4); border-radius: 50%; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1; animation: pulse 2s infinite ease-in-out; }
         @keyframes pulse { 0% { transform: translate(-50%, -50%) scale(0.5); opacity: 1; } 100% { transform: translate(-50%, -50%) scale(1.5); opacity: 0; } }
-        
-        .unrotate-element {
-          transform: rotate(${-mapRotation}deg) !important;
-          transition: transform 0.1s ease-out;
-        }
 
         .clear-tooltip-bg {
           background: transparent !important;
@@ -1418,12 +1285,10 @@ export default function Map() {
             <button onClick={() => setIsToolsPanelOpen(true)} className="absolute top-[80px] left-4 z-[1000] bg-white p-3 sm:p-3.5 rounded-2xl shadow-xl border border-slate-200 hover:bg-slate-50 transition-all cursor-pointer text-indigo-600 flex items-center justify-center hover:scale-105" title="បើកផ្ទាំងបញ្ជា"><Layers size={22} /></button>
             )}
 
+            {/* 🚀 Mobile Action Button (Live Location) */}
             {deviceChoice === 'mobile' && !isToolsPanelOpen && (
               <div className="absolute top-[140px] left-4 z-[1000] flex flex-col gap-2">
-                <button onClick={handleLocateMe} className="bg-blue-600 p-3.5 rounded-2xl shadow-xl border border-blue-700 hover:bg-blue-700 transition-all cursor-pointer text-white flex items-center justify-center hover:scale-105" title="ទីតាំងរបស់ខ្ញុំ"><Navigation size={22} /></button>
-                {mapRotation !== 0 && (
-                  <button onClick={resetMapNorth} className="bg-rose-600 p-3.5 rounded-2xl shadow-xl border border-rose-700 hover:bg-rose-700 transition-all cursor-pointer text-white flex items-center justify-center hover:scale-105 text-xs font-bold shadow-lg" title="តម្រឹមទិសខាងជើង">🧭 0°</button>
-                )}
+                <button onClick={handleLocateMe} className="bg-blue-600 p-3.5 rounded-2xl shadow-xl border border-blue-700 hover:bg-blue-700 transition-all cursor-pointer text-white flex items-center justify-center hover:scale-105 active:scale-95" title="ទីតាំងរបស់ខ្ញុំ"><Navigation size={22} /></button>
               </div>
             )}
 
@@ -1543,11 +1408,11 @@ export default function Map() {
 
             </div>
             
+            {/* 🚀 ផ្ទៃផែនទី Native 100% គ្មាន Scale/Rotation ធ្វើឱ្យ Scrolling & Touch រលូនលើ Mobile */}
             <main className="flex-1 relative z-0 h-full bg-slate-900 overflow-hidden">
               <div 
                 ref={mapRef} 
-                className="w-full h-full transition-transform duration-75 touch-none origin-center" 
-                style={{ transform: `rotate(${mapRotation}deg) scale(1.6)` }}
+                className="w-full h-full touch-pan-x touch-pan-y" 
               />
             </main>
         </div>
