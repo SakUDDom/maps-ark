@@ -6,16 +6,18 @@ import L from 'leaflet';
 import '@geoman-io/leaflet-geoman-free';
 import { 
   MapPin, Eraser, Hexagon, Scissors, RotateCw, Search, Slash, Move, 
-  LogIn, LogOut, PieChart, Ban, X, Spline, Map as MapIcon, Clock, 
-  CheckCircle, RotateCcw, Road, Monitor, Smartphone, Navigation, 
-  Loader2, Layers, Building, History 
+  LogIn, LogOut, PieChart, Ban, X, Spline, Map as MapIcon, 
+  Monitor, Smartphone, Navigation, Loader2, Layers, Building 
 } from 'lucide-react';
 import { supabaseClient } from '../utils/supabase';
+import { KHMER_MONTHS } from '../constants/months';
 
 import LoginModal from './LoginModal';
 import BillPrint from './BillPrint';
 import CustomerDetail from './CustomerDetail';
 import ReportDashboard from './ReportDashboard';
+import HistoryModal from './HistoryModal';
+import RoadEditModal from './RoadEditModal';
 
 function isPointInPoly(point: [number, number], vs: Array<[number, number]>) {
   if (!vs || vs.length === 0) return false;
@@ -123,10 +125,11 @@ export default function Map() {
   const pointsLayer = useRef<L.FeatureGroup | null>(null);
   const polygonsLayer = useRef<L.FeatureGroup | null>(null);
   const roadsLayer = useRef<L.FeatureGroup | null>(null);
-  const bordersLayer = useRef<L.FeatureGroup | null>(null);
-  const locationMarkerRef = useRef<L.Marker | null>(null);
+  const zoneBordersLayer = useRef<L.FeatureGroup | null>(null);
+  const adminBordersLayer = useRef<L.FeatureGroup | null>(null);
   
-  // 🚀 Ref ការពារកុំឱ្យ GPS Update flyTo ផ្ទួនៗបណ្តាលឱ្យ Zoom Out
+  const locationMarkerRef = useRef<L.Marker | null>(null);
+  const locationAccuracyRef = useRef<L.Circle | null>(null);
   const hasCenteredGPSRef = useRef<boolean>(false);
 
   const activeDrawTool = useRef<string>('point'); 
@@ -161,10 +164,12 @@ export default function Map() {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
 
+  // All Default OFF
   const [pointToggle, setPointToggle] = useState(false);
   const [polygonToggle, setPolygonToggle] = useState(false);
   const [roadToggle, setRoadToggle] = useState(false);
-  const [borderLive, setBorderLive] = useState(false);
+  const [zoneBorderToggle, setZoneBorderToggle] = useState(false);
+  const [adminBorderToggle, setAdminBorderToggle] = useState(false);
 
   const [mapRotation, setMapRotation] = useState(0);
   const initialTouchAngleRef = useRef<number | null>(null);
@@ -174,8 +179,6 @@ export default function Map() {
   const allDataRef = useRef<any[]>([]);
   const deviceChoiceRef = useRef<'pc' | 'mobile' | null>(null);
   const hasFetchedRef = useRef(false);
-
-  const monthsList = ['ខែមករា', 'ខែកកុម្ភៈ', 'ខែមីនា', 'ខែមេសា', 'ខែឧសភា', 'ខែមិថុនា', 'ខែកក្កដា', 'ខែសីហា', 'ខែកញ្ញា', 'ខែតុលា', 'ខែវិច្ឆិកា', 'ខែធ្នូ'];
 
   useEffect(() => {
     currentUserRef.current = currentUser;
@@ -189,6 +192,19 @@ export default function Map() {
       (window as any)._currentMapScale = 1.6;
     }
   }, [mapRotation]);
+
+  const isGeomanBusy = () => {
+    const pm = mapInstance.current?.pm as any;
+    if (!pm) return false;
+    return (
+      pm.globalEditModeEnabled() || 
+      pm.globalDrawModeEnabled() || 
+      pm.globalDragModeEnabled() || 
+      pm.globalRemovalModeEnabled() || 
+      pm.globalRotateModeEnabled() || 
+      pm.globalCutModeEnabled()
+    );
+  };
 
   useEffect(() => {
     const checkSession = async () => {
@@ -275,27 +291,50 @@ export default function Map() {
     };
   }, [mapRotation]);
 
-  // 🚀 GPS Tracking គ្មានបញ្ហា Auto Zoom Out
   useEffect(() => {
     if (deviceChoice === 'mobile' && mapInstance.current) {
         mapInstance.current.locate({ watch: true, enableHighAccuracy: true, setView: false });
         mapInstance.current.on('locationfound', (e: any) => {
             if (!locationMarkerRef.current) {
-                const liveIcon = L.divIcon({ className: 'clear-default-icon', html: `<div class="live-location-pulse"></div><div class="live-location-dot"></div>`, iconSize: [28, 28], iconAnchor: [14, 14] });
+                const liveIcon = L.divIcon({ 
+                  className: 'clear-default-icon', 
+                  html: `<div class="live-location-pulse"></div><div class="live-location-dot"></div>`, 
+                  iconSize: [28, 28], 
+                  iconAnchor: [14, 14] 
+                });
                 locationMarkerRef.current = L.marker(e.latlng, { icon: liveIcon, pane: 'pointsPane' }).addTo(mapInstance.current!);
                 
+                locationAccuracyRef.current = L.circle(e.latlng, {
+                  radius: e.accuracy || 15,
+                  color: '#3b82f6',
+                  fillColor: '#60a5fa',
+                  fillOpacity: 0.15,
+                  weight: 1
+                }).addTo(mapInstance.current!);
+
                 if (!hasCenteredGPSRef.current) {
                   hasCenteredGPSRef.current = true;
                   mapInstance.current?.flyTo(e.latlng, 17, { animate: true, duration: 1.2 });
                 }
             } else { 
                 locationMarkerRef.current.setLatLng(e.latlng); 
+                if (locationAccuracyRef.current) {
+                  locationAccuracyRef.current.setLatLng(e.latlng);
+                  locationAccuracyRef.current.setRadius(e.accuracy || 15);
+                }
             }
         });
-        mapInstance.current.on('locationerror', (e: any) => { console.warn("មិនអាចចាប់ទីតាំងបានទេ៖ ", e.message); });
+        mapInstance.current.on('locationerror', (e: any) => { console.warn("GPS Notice: ", e.message); });
     } else if (deviceChoice === 'pc' && mapInstance.current) {
         mapInstance.current.stopLocate();
-        if (locationMarkerRef.current) { mapInstance.current.removeLayer(locationMarkerRef.current); locationMarkerRef.current = null; }
+        if (locationMarkerRef.current) { 
+          mapInstance.current.removeLayer(locationMarkerRef.current); 
+          locationMarkerRef.current = null; 
+        }
+        if (locationAccuracyRef.current) {
+          mapInstance.current.removeLayer(locationAccuracyRef.current);
+          locationAccuracyRef.current = null;
+        }
     }
   }, [deviceChoice]);
 
@@ -305,58 +344,123 @@ export default function Map() {
 
   const resetMapNorth = () => { setMapRotation(0); };
 
+  const handleSelectHousehold = async (h: any) => {
+    if (isGeomanBusy()) return;
+
+    let freshData = allDataRef.current.find((item: any) => item.id === h.id) || h;
+
+    let detectedZone = freshData.zone || '';
+    if (!detectedZone && zoneBordersLayer.current && freshData.lng && freshData.lat) {
+      zoneBordersLayer.current.eachLayer((bLayer: any) => {
+        const bGeo = bLayer.toGeoJSON ? bLayer.toGeoJSON() : bLayer.options?.geojson;
+        const bZone = bLayer.options?.zoneName || bGeo?.properties?.zone;
+        const polyCoords = extractPolyCoords(bGeo);
+        if (bZone && polyCoords && isPointInPoly([freshData.lng, freshData.lat], polyCoords)) {
+          detectedZone = bZone.replace(' Admin:', '').trim();
+        }
+      });
+
+      if (detectedZone) {
+        freshData = { ...freshData, zone: detectedZone };
+        await supabaseClient.from('households').update({ zone: detectedZone }).eq('id', freshData.id);
+        setAllData(prev => prev.map(item => item.id === freshData.id ? freshData : item));
+      }
+    }
+
+    setSelectedHome(freshData); 
+    setEditForm({ 
+      custom_id: freshData.custom_id || '', 
+      customer_name: freshData.customer_name || '', 
+      monthly_fee: freshData.monthly_fee || 0, 
+      zone: freshData.zone || detectedZone || '', 
+      status_color: freshData.status_color || 'yellow', 
+      payment_month: freshData.payment_month || 'ខែមករា', 
+      photo_url: freshData.photo_url || '' 
+    }); 
+    setPayMonth(freshData.payment_month || 'ខែមករា'); 
+    setPayNumMonths(1); 
+    setIsManualEditOpen(false); 
+  };
+
+  const handleLayerUpdate = async (layer: any) => {
+    const id = layer.options?.dbId || layer.options?.parentLayer?.options?.dbId;
+    const dbType = layer.options?.dbType || layer.options?.parentLayer?.options?.dbType;
+    if (!id || !currentUserRef.current) return;
+
+    const geojson = layer.toGeoJSON();
+
+    if (dbType === 'road') {
+      await supabaseClient.from('roads').update({ geojson }).eq('id', id);
+    } else if (dbType === 'border') {
+      await supabaseClient.from('zone_borders').update({ geojson }).eq('id', id);
+    } else {
+      const center = layer.getBounds ? layer.getBounds().getCenter() : layer.getLatLng();
+      const { error } = await supabaseClient.from('households').update({ lat: center.lat, lng: center.lng, geojson }).eq('id', id);
+      if (!error) {
+        setAllData(prev => prev.map(item => item.id === id ? { ...item, lat: center.lat, lng: center.lng, geojson } : item));
+      }
+    }
+  };
+
   const addHouseholdToMap = (h: any) => {
-    let layer: any;
     let colorHex = h.status_color === 'blue' ? '#2563eb' : h.status_color === 'red' ? '#dc2626' : h.status_color === 'black' ? '#020617' : '#f59e0b';
     const isMobileChoice = deviceChoiceRef.current === 'mobile';
     const pointRadius = isMobileChoice ? 4.5 : 5;
 
     if (h.shape_type === 'point' && h.lat && h.lng) {
-      layer = L.circleMarker([h.lat, h.lng], { 
+      const pointMarker = L.circleMarker([h.lat, h.lng], { 
         radius: pointRadius, 
         fillColor: colorHex, 
         color: '#ffffff', 
         weight: 1.2, 
-        fillOpacity: 0.95,
-        pane: 'pointsPane'
+        fillOpacity: 0.95
       });
-      if (pointsLayer.current) { layer.options.dbId = h.id; layer.options.dbType = 'household'; layer.addTo(pointsLayer.current); }
+      pointMarker.options.dbId = h.id;
+      pointMarker.options.dbType = 'household';
+      pointMarker.options.pmIgnore = false;
+      pointMarker.on('click', () => handleSelectHousehold(h));
+      pointMarker.on('pm:dragend', () => handleLayerUpdate(pointMarker));
+      if (pointsLayer.current) pointMarker.addTo(pointsLayer.current);
     } 
     else if (h.shape_type === 'polygon' && h.geojson) {
-      layer = L.geoJSON(h.geojson, { pane: 'polygonsPane', style: { color: '#ffffff', weight: 1.5, fillColor: colorHex, fillOpacity: 0.85 } });
-      if (polygonsLayer.current) { layer.eachLayer((l: any) => { l.options.dbId = h.id; l.options.dbType = 'household'; }); layer.addTo(polygonsLayer.current); }
-    }
-
-    if (layer) {
-      layer.on('click', async () => {
-        let freshData = allDataRef.current.find((item: any) => item.id === h.id) || h;
-
-        let detectedZone = freshData.zone || '';
-        if (!detectedZone && bordersLayer.current && freshData.lng && freshData.lat) {
-          bordersLayer.current.eachLayer((bLayer: any) => {
-            const bGeo = bLayer.toGeoJSON ? bLayer.toGeoJSON() : bLayer.options?.geojson;
-            const bZone = bLayer.options?.zoneName || bGeo?.properties?.zone;
-            const isAdmin = bZone?.startsWith(' Admin:');
-            
-            if (bZone && !isAdmin) {
-              const polyCoords = extractPolyCoords(bGeo);
-              if (polyCoords && isPointInPoly([freshData.lng, freshData.lat], polyCoords)) {
-                detectedZone = bZone.replace(' Admin:', '').trim();
-              }
-            }
-          });
-
-          if (detectedZone) {
-            freshData = { ...freshData, zone: detectedZone };
-            await supabaseClient.from('households').update({ zone: detectedZone }).eq('id', freshData.id);
-            setAllData(prev => prev.map(item => item.id === freshData.id ? freshData : item));
-          }
-        }
-
-        setSelectedHome(freshData); 
-        setEditForm({ custom_id: freshData.custom_id || '', customer_name: freshData.customer_name || '', monthly_fee: freshData.monthly_fee || 0, zone: freshData.zone || detectedZone || '', status_color: freshData.status_color || 'yellow', payment_month: freshData.payment_month || 'ខែមករា', photo_url: freshData.photo_url || '' }); 
-        setPayMonth(freshData.payment_month || 'ខែមករា'); setPayNumMonths(1); setIsManualEditOpen(false); 
+      const polyGroup = L.geoJSON(h.geojson, { 
+        style: { color: '#ffffff', weight: 1.5, fillColor: colorHex, fillOpacity: 0.85 } 
       });
+
+      (polyGroup as any).options.dbId = h.id;
+      (polyGroup as any).options.dbType = 'household';
+      (polyGroup as any).options.pmIgnore = false;
+
+      polyGroup.eachLayer((subLayer: any) => { 
+        subLayer.options.dbId = h.id; 
+        subLayer.options.dbType = 'household';
+        subLayer.options.pmIgnore = false;
+        (subLayer as any).pmIgnore = false;
+
+        subLayer.on('pm:edit', () => handleLayerUpdate(subLayer));
+        subLayer.on('pm:dragend', () => handleLayerUpdate(subLayer));
+        subLayer.on('pm:rotateend', () => handleLayerUpdate(subLayer));
+
+        subLayer.on('click', (e: any) => {
+          if (isGeomanBusy() || subLayer.pm?.enabled()) return;
+          L.DomEvent.stopPropagation(e);
+          handleSelectHousehold(h);
+        });
+
+        subLayer.on('dblclick', (e: any) => {
+          L.DomEvent.stopPropagation(e);
+          if (!currentUserRef.current) {
+            alert('🔒 សូមចូលគណនី (Login) ជាមុនសិន!');
+            return;
+          }
+          subLayer.pm.toggleEdit({ snappable: true });
+          if (!subLayer.pm.enabled()) {
+            handleLayerUpdate(subLayer);
+          }
+        });
+      });
+
+      if (polygonsLayer.current) polyGroup.addTo(polygonsLayer.current);
     }
   };
 
@@ -369,12 +473,53 @@ export default function Map() {
       if(r.road_type === 'Concrete road') roadColor = '#f6d91e';
       if(r.road_type === 'Asphalt road') roadColor = '#e01ae3';
 
-      const layer = L.geoJSON(r.geojson, { pane: 'roadsPane', style: { color: roadColor, weight: 6, opacity: 0.9 } }); 
-      layer.bindTooltip(`<div class="text-center unrotate-element"><b>${r.name || 'មិនមានឈ្មោះផ្លូវ'}</b><br><span class="text-xs text-slate-500">${r.road_type || 'Land road'} | ទំហំ: ${r.width || 'មិនបញ្ជាក់'}</span></div>`, {sticky: true, className: 'font-bold'});
+      const layer = L.geoJSON(r.geojson, { 
+        style: { color: roadColor, weight: 6, opacity: 0.9 } 
+      }); 
+      
+      const tooltipContent = `<div class="text-center unrotate-element"><b>${r.name || 'មិនមានឈ្មោះផ្លូវ'}</b><br><span class="text-xs text-slate-500">${r.road_type || 'Land road'} | ទំហំ: ${r.width || 'មិនបញ្ជាក់'}</span></div>`;
+      layer.bindTooltip(tooltipContent, { sticky: true, className: 'font-bold' });
+
+      (layer as any).options.dbId = r.id;
+      (layer as any).options.dbType = 'road';
+      (layer as any).options.pmIgnore = false;
+
       layer.eachLayer((l: any) => { 
-        l.options.dbId = r.id; l.options.dbType = 'road'; 
-        l.on('dblclick', () => { if(!currentUserRef.current) return; setRoadEditData({ isNew: false, id: r.id, name: r.name || '', width: r.width || '', address: r.address || '', road_type: r.road_type || 'Land road' }); });
+        l.options.dbId = r.id; 
+        l.options.dbType = 'road'; 
+        l.options.pmIgnore = false;
+        (l as any).pmIgnore = false;
+
+        l.on('pm:edit', () => handleLayerUpdate(l));
+        l.on('pm:dragend', () => handleLayerUpdate(l));
+        l.on('pm:rotateend', () => handleLayerUpdate(l));
+        
+        l.on('click', (e: any) => {
+          if (isGeomanBusy() || l.pm?.enabled()) return;
+          L.DomEvent.stopPropagation(e);
+          setRoadEditData({ 
+            isNew: false, 
+            id: r.id, 
+            name: r.name || '', 
+            width: r.width || '', 
+            address: r.address || '', 
+            road_type: r.road_type || 'Land road' 
+          });
+        });
+
+        l.on('dblclick', (e: any) => {
+          L.DomEvent.stopPropagation(e);
+          if (!currentUserRef.current) {
+            alert('🔒 សូមចូលគណនី (Login) ជាមុនសិន!');
+            return;
+          }
+          l.pm.toggleEdit({ snappable: true });
+          if (!l.pm.enabled()) {
+            handleLayerUpdate(l);
+          }
+        });
       });
+
       if(roadsLayer.current) layer.addTo(roadsLayer.current);
     }
   };
@@ -386,13 +531,11 @@ export default function Map() {
       const dashStyle = isAdmin ? undefined : '6, 6';
 
       const layer = L.geoJSON(b.geojson, { 
-        pane: 'bordersPane',
         interactive: true,
         style: { color: strokeColor, weight: 4, opacity: 0.85, dashArray: dashStyle, fillColor: strokeColor, fillOpacity: 0.15 } 
       }); 
 
       const displayZone = b.zone?.replace(' Admin:', '') || '';
-      
       const watermarkClass = isAdmin ? 'admin-watermark' : 'zone-watermark';
       const iconPrefix = isAdmin ? '🏙️' : '📍';
       const labelText = `${iconPrefix} ${displayZone}`;
@@ -406,20 +549,26 @@ export default function Map() {
       (layer as any).options.dbId = b.id;
       (layer as any).options.dbType = 'border';
       (layer as any).options.zoneName = b.zone;
+      (layer as any).options.pmIgnore = false;
 
       layer.eachLayer((l: any) => { 
         l.options.dbId = b.id; 
         l.options.dbType = 'border'; 
         l.options.zoneName = b.zone;
+        l.options.pmIgnore = false;
         (l as any).pmIgnore = false;
 
-        l.on('dblclick', async (e: any) => {
-          if (e && e.originalEvent) {
-            L.DomEvent.stopPropagation(e.originalEvent);
-          }
-          if(!currentUserRef.current) return;
+        l.on('pm:edit', () => handleLayerUpdate(l));
+        l.on('pm:dragend', () => handleLayerUpdate(l));
+        l.on('pm:rotateend', () => handleLayerUpdate(l));
 
-          const newZoneName = prompt("កែប្រែឈ្មោះព្រំដែន/តំបន់៖", displayZone);
+        l.on('click', async (e: any) => {
+          if (isGeomanBusy() || l.pm?.enabled()) return;
+          L.DomEvent.stopPropagation(e);
+          if (!currentUserRef.current) return;
+
+          const promptTitle = isAdmin ? "កែប្រែឈ្មោះព្រំប្រទល់រដ្ឋបាល៖" : "កែប្រែឈ្មោះតំបន់ប្រមូល៖";
+          const newZoneName = prompt(promptTitle, displayZone);
           if (newZoneName && newZoneName.trim() !== "" && newZoneName !== displayZone) {
               const savedZoneName = isAdmin ? ` Admin: ${newZoneName.trim()}` : newZoneName.trim();
               await supabaseClient.from('zone_borders').update({ zone: savedZoneName }).eq('id', b.id);
@@ -435,9 +584,25 @@ export default function Map() {
               });
           }
         });
+
+        l.on('dblclick', (e: any) => {
+          L.DomEvent.stopPropagation(e);
+          if (!currentUserRef.current) {
+            alert('🔒 សូមចូលគណនី (Login) ជាមុនសិន!');
+            return;
+          }
+          l.pm.toggleEdit({ snappable: true });
+          if (!l.pm.enabled()) {
+            handleLayerUpdate(l);
+          }
+        });
       });
 
-      if(bordersLayer.current) bordersLayer.current.addLayer(layer);
+      if (isAdmin) {
+        if (adminBordersLayer.current) adminBordersLayer.current.addLayer(layer);
+      } else {
+        if (zoneBordersLayer.current) zoneBordersLayer.current.addLayer(layer);
+      }
     }
   };
 
@@ -449,22 +614,34 @@ export default function Map() {
     if (pointsLayer.current) pointsLayer.current.clearLayers();
     if (polygonsLayer.current) polygonsLayer.current.clearLayers();
     if (roadsLayer.current) roadsLayer.current.clearLayers();
-    if (bordersLayer.current) bordersLayer.current.clearLayers();
+    if (zoneBordersLayer.current) zoneBordersLayer.current.clearLayers();
+    if (adminBordersLayer.current) adminBordersLayer.current.clearLayers();
 
     let householdQuery = supabaseClient.from('households').select('*');
     let borderQuery = supabaseClient.from('zone_borders').select('*');
     let roadQuery = supabaseClient.from('roads').select('*'); 
+    let paymentQuery = supabaseClient.from('payments').select('*');
 
     if (userToUse.role !== 'super_admin' && userToUse.zone) {
        householdQuery = householdQuery.eq('zone', userToUse.zone);
        borderQuery = borderQuery.eq('zone', userToUse.zone);
+       paymentQuery = paymentQuery.eq('zone', userToUse.zone);
     }
 
-    const [householdsRes, roadsRes, bordersRes] = await Promise.all([ householdQuery, roadQuery, borderQuery ]);
+    const [householdsRes, roadsRes, bordersRes, paymentsRes] = await Promise.all([ 
+      householdQuery, 
+      roadQuery, 
+      borderQuery,
+      paymentQuery
+    ]);
 
-    if (householdsRes.data) { setAllData(householdsRes.data); householdsRes.data.forEach(addHouseholdToMap); }
+    if (householdsRes.data) { 
+      setAllData(householdsRes.data); 
+      householdsRes.data.forEach(addHouseholdToMap); 
+    }
     if (roadsRes.data) roadsRes.data.forEach(addRoadToMap); 
     if (bordersRes.data) bordersRes.data.forEach(addBorderToMap);
+    if (paymentsRes.data) setPaymentsData(paymentsRes.data);
 
     setIsFetchingData(false); 
   };
@@ -474,13 +651,10 @@ export default function Map() {
     L.Icon.Default.mergeOptions({ iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png', iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png', shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png' });
 
     if (typeof window !== 'undefined' && mapRef.current && !mapInstance.current) {
-      const customRenderer = L.canvas({ tolerance: 20 });
-
       mapInstance.current = L.map(mapRef.current, { 
         zoomControl: false, 
-        preferCanvas: true,
-        renderer: customRenderer,
-        clickTolerance: 15,
+        preferCanvas: false,
+        doubleClickZoom: false,
         maxZoom: 22,
         bounceAtZoomLimits: false
       }).setView([11.99, 105.46], 15);
@@ -527,18 +701,6 @@ export default function Map() {
         );
       };
 
-      mapInstance.current.createPane('bordersPane');
-      mapInstance.current.getPane('bordersPane')!.style.zIndex = '350';
-
-      mapInstance.current.createPane('roadsPane');
-      mapInstance.current.getPane('roadsPane')!.style.zIndex = '400';
-
-      mapInstance.current.createPane('polygonsPane');
-      mapInstance.current.getPane('polygonsPane')!.style.zIndex = '450';
-
-      mapInstance.current.createPane('pointsPane');
-      mapInstance.current.getPane('pointsPane')!.style.zIndex = '650';
-
       L.control.zoom({ position: 'bottomright' }).addTo(mapInstance.current);
       L.tileLayer('https://{s}.google.com/vt/lyrs=s,h&x={x}&y={y}&z={z}', { 
         maxZoom: 22, 
@@ -548,21 +710,32 @@ export default function Map() {
 
       if (mapInstance.current.pm) {
         const pmInstance = mapInstance.current.pm as any;
-        if (typeof pmInstance.setGlobalOptions === 'function') pmInstance.setGlobalOptions({ pmIgnore: false } as any);
+        if (typeof pmInstance.setGlobalOptions === 'function') {
+          pmInstance.setGlobalOptions({ pmIgnore: false } as any);
+        }
         if (typeof pmInstance.addControls === 'function') {
           pmInstance.addControls({ drawMarker: false, drawCircleMarker: false, drawPolyline: false, drawRectangle: false, drawPolygon: false, drawCircle: false, drawText: false, editMode: false, dragMode: false, cutPolygon: false, removalMode: false, rotateMode: false } as any);
         }
       }
 
-      pointsLayer.current = L.featureGroup().addTo(mapInstance.current);
-      polygonsLayer.current = L.featureGroup().addTo(mapInstance.current);
-      roadsLayer.current = L.featureGroup().addTo(mapInstance.current);
-      bordersLayer.current = L.featureGroup().addTo(mapInstance.current);
+      pointsLayer.current = L.featureGroup();
+      polygonsLayer.current = L.featureGroup();
+      roadsLayer.current = L.featureGroup();
+      zoneBordersLayer.current = L.featureGroup();
+      adminBordersLayer.current = L.featureGroup();
 
       setIsMapReady(true); 
 
+      mapInstance.current.on('pm:edit', (e: any) => {
+        if (e.layer) handleLayerUpdate(e.layer);
+      });
+
       mapInstance.current.on('pm:create', async (e: any) => {
-        if (!currentUserRef.current) { alert('🔒 សូមចូលគណនី (Login) ជាមុនសិន។'); mapInstance.current?.removeLayer(e.layer); return; }
+        if (!currentUserRef.current) { 
+          alert('🔒 សូមចូលគណនី (Login) ជាមុនសិន។'); 
+          mapInstance.current?.removeLayer(e.layer); 
+          return; 
+        }
 
         const layer = e.layer;
         const geojson = layer.toGeoJSON();
@@ -584,6 +757,7 @@ export default function Map() {
             
             const borderTitle = prompt(promptTitle);
             mapInstance.current?.removeLayer(e.layer);
+            (mapInstance.current?.pm as any)?.disableDraw();
             if (!borderTitle || !borderTitle.trim()) return; 
 
             const borderTypeStr = isZoneMode ? 'zone' : 'admin';
@@ -607,7 +781,7 @@ export default function Map() {
             }
 
             if(data) { 
-              setBorderLive(true); 
+              if (isZoneMode) setZoneBorderToggle(true); else setAdminBorderToggle(true);
               addBorderToMap(data); 
 
               if (isZoneMode) {
@@ -622,9 +796,7 @@ export default function Map() {
 
                   if (pointsToUpdate.length > 0) {
                     await supabaseClient.from('households').update({ zone: borderTitle.trim() }).in('id', pointsToUpdate);
-                    
                     setAllData(prev => prev.map(item => pointsToUpdate.includes(item.id) ? { ...item, zone: borderTitle.trim() } : item));
-                    
                     pointsLayer.current?.clearLayers();
                     allDataRef.current.map(item => pointsToUpdate.includes(item.id) ? { ...item, zone: borderTitle.trim() } : item).forEach(addHouseholdToMap);
 
@@ -641,21 +813,29 @@ export default function Map() {
             mapInstance.current?.removeLayer(e.layer);
             
             let autoZone = currentUserRef.current?.role !== 'super_admin' ? currentUserRef.current?.name : '';
-            if (bordersLayer.current) {
-              bordersLayer.current.eachLayer((bLayer: any) => {
+            if (zoneBordersLayer.current) {
+              zoneBordersLayer.current.eachLayer((bLayer: any) => {
                 const bData = bLayer.toGeoJSON ? bLayer.toGeoJSON() : bLayer.options?.geojson;
                 const bZone = bLayer.options?.zoneName || bData?.properties?.zone;
-                const isAdmin = bZone?.startsWith(' Admin:');
-                if (bZone && !isAdmin) {
-                  const polyCoords = extractPolyCoords(bData);
-                  if (polyCoords && isPointInPoly([center.lng, center.lat], polyCoords)) {
-                    autoZone = bZone.replace(' Admin:', '').trim();
-                  }
+                const polyCoords = extractPolyCoords(bData);
+                if (bZone && polyCoords && isPointInPoly([center.lng, center.lat], polyCoords)) {
+                  autoZone = bZone.replace(' Admin:', '').trim();
                 }
               });
             }
 
-            const { data } = await supabaseClient.from('households').insert({ lat: center.lat, lng: center.lng, custom_id: customId, status_color: 'yellow', shape_type: dbShape, geojson: geojson, payment_month: 'ខែមករា', monthly_fee: 10000, zone: autoZone }).select().single();
+            const { data } = await supabaseClient.from('households').insert({ 
+              lat: center.lat, 
+              lng: center.lng, 
+              custom_id: customId, 
+              status_color: 'yellow', 
+              shape_type: dbShape, 
+              geojson: geojson, 
+              payment_month: 'ខែមករា', 
+              monthly_fee: 10000, 
+              zone: autoZone 
+            }).select().single();
+
             if(data) { 
                 setAllData(prev => [...prev, data]); 
                 addHouseholdToMap(data); 
@@ -676,38 +856,29 @@ export default function Map() {
         if (!id) return;
 
         if (dbType === 'road') {
-          await supabaseClient.from('roads').delete().eq('id', id);
+          if (confirm("តើអ្នកពិតជាចង់លុបខ្សែផ្លូវនេះមែនទេ?")) {
+            await supabaseClient.from('roads').delete().eq('id', id);
+            alert('✅ បានលុបខ្សែផ្លូវជោគជ័យ!');
+          }
         }
         else if (dbType === 'border') {
-          const { error } = await supabaseClient.from('zone_borders').delete().eq('id', id);
-          if (!error) {
+          if (confirm("តើអ្នកពិតជាចង់លុបព្រំដែននេះមែនទេ?")) {
+            await supabaseClient.from('zone_borders').delete().eq('id', id);
             alert('✅ បានលុបព្រំដែនជោគជ័យ!');
-          } else {
-            alert('❌ មិនអាចលុបព្រំដែនបានទេ៖ ' + error.message);
           }
         }
         else {
-          await supabaseClient.from('households').delete().eq('id', id);
-        }
-      });
-
-      mapInstance.current.on('pm:update', async (e: any) => {
-        if (!currentUserRef.current) return; 
-        const id = e.layer.options?.dbId; 
-        const dbType = e.layer.options?.dbType; 
-        if (!id) return; 
-        const geojson = e.layer.toGeoJSON();
-
-        if (dbType === 'road') await supabaseClient.from('roads').update({ geojson: geojson }).eq('id', id);
-        else if (dbType === 'border') await supabaseClient.from('zone_borders').update({ geojson: geojson }).eq('id', id);
-        else {
-            const center = e.layer.getBounds ? e.layer.getBounds().getCenter() : e.layer.getLatLng();
-            await supabaseClient.from('households').update({ lat: center.lat, lng: center.lng, geojson: geojson }).eq('id', id);
+          if (confirm("តើអ្នកពិតជាចង់លុបទិន្នន័យផ្ទះ/ដំបូលនេះមែនទេ?")) {
+            await supabaseClient.from('households').delete().eq('id', id);
+            setAllData(prev => prev.filter(item => item.id !== id));
+            alert('✅ បានលុបផ្ទះជោគជ័យ!');
+          }
         }
       });
     }
   }, []);
 
+  // គ្រប់គ្រង Toggle Layers
   useEffect(() => {
     if (mapInstance.current && pointsLayer.current) {
       if (pointToggle) {
@@ -739,26 +910,71 @@ export default function Map() {
   }, [roadToggle]);
 
   useEffect(() => {
-    if (mapInstance.current && bordersLayer.current) {
-      if (borderLive) {
-        if (!mapInstance.current.hasLayer(bordersLayer.current)) mapInstance.current.addLayer(bordersLayer.current);
+    if (mapInstance.current && zoneBordersLayer.current) {
+      if (zoneBorderToggle) {
+        if (!mapInstance.current.hasLayer(zoneBordersLayer.current)) mapInstance.current.addLayer(zoneBordersLayer.current);
       } else {
-        if (mapInstance.current.hasLayer(bordersLayer.current)) mapInstance.current.removeLayer(bordersLayer.current);
+        if (mapInstance.current.hasLayer(zoneBordersLayer.current)) mapInstance.current.removeLayer(zoneBordersLayer.current);
       }
     }
-  }, [borderLive]);
+  }, [zoneBorderToggle]);
+
+  useEffect(() => {
+    if (mapInstance.current && adminBordersLayer.current) {
+      if (adminBorderToggle) {
+        if (!mapInstance.current.hasLayer(adminBordersLayer.current)) mapInstance.current.addLayer(adminBordersLayer.current);
+      } else {
+        if (mapInstance.current.hasLayer(adminBordersLayer.current)) mapInstance.current.removeLayer(adminBordersLayer.current);
+      }
+    }
+  }, [adminBorderToggle]);
 
   const checkPermission = () => { if (!currentUserRef.current) { alert('🔒 សូមចុច "ចូលគណនី" (Login) ជាមុនសិន!'); setShowLoginModal(true); return false; } return true; };
 
-  const drawPoint = () => { if(checkPermission()){ activeDrawTool.current = 'point'; (mapInstance.current?.pm as any)?.disableDraw(); (mapInstance.current?.pm as any)?.enableDraw('Marker', { snappable: true }); }};
-  const drawPolygon = () => { if(checkPermission()){ activeDrawTool.current = 'polygon'; (mapInstance.current?.pm as any)?.disableDraw(); (mapInstance.current?.pm as any)?.enableDraw('Polygon', { snappable: true }); }};
-  const drawRoad = () => { if(checkPermission()){ activeDrawTool.current = 'road'; (mapInstance.current?.pm as any)?.disableDraw(); (mapInstance.current?.pm as any)?.enableDraw('Line', { snappable: true }); }};
+  const drawPoint = () => { 
+    if(checkPermission()){ 
+      if (mapInstance.current && pointsLayer.current && !mapInstance.current.hasLayer(pointsLayer.current)) {
+        mapInstance.current.addLayer(pointsLayer.current);
+      }
+      setPointToggle(true);
+      activeDrawTool.current = 'point'; 
+      (mapInstance.current?.pm as any)?.disableDraw(); 
+      (mapInstance.current?.pm as any)?.enableDraw('Marker', { snappable: true }); 
+    }
+  };
+
+  const drawPolygon = () => { 
+    if(checkPermission()){ 
+      if (mapInstance.current && polygonsLayer.current && !mapInstance.current.hasLayer(polygonsLayer.current)) {
+        mapInstance.current.addLayer(polygonsLayer.current);
+      }
+      setPolygonToggle(true);
+      activeDrawTool.current = 'polygon'; 
+      (mapInstance.current?.pm as any)?.disableDraw(); 
+      (mapInstance.current?.pm as any)?.enableDraw('Polygon', { snappable: true }); 
+    }
+  };
+
+  const drawRoad = () => { 
+    if(checkPermission()){ 
+      if (mapInstance.current && roadsLayer.current && !mapInstance.current.hasLayer(roadsLayer.current)) {
+        mapInstance.current.addLayer(roadsLayer.current);
+      }
+      setRoadToggle(true);
+      activeDrawTool.current = 'road'; 
+      (mapInstance.current?.pm as any)?.disableDraw(); 
+      (mapInstance.current?.pm as any)?.enableDraw('Line', { snappable: true }); 
+    }
+  };
   
   const drawZoneBorder = () => { 
     if(checkPermission()){ 
+      if (mapInstance.current && zoneBordersLayer.current && !mapInstance.current.hasLayer(zoneBordersLayer.current)) {
+        mapInstance.current.addLayer(zoneBordersLayer.current);
+      }
+      setZoneBorderToggle(true);
       activeDrawTool.current = 'border'; 
       borderModeRef.current = 'zone';
-      setBorderLive(true); 
       (mapInstance.current?.pm as any)?.disableDraw(); 
       (mapInstance.current?.pm as any)?.enableDraw('Polygon', { snappable: true }); 
     }
@@ -766,22 +982,66 @@ export default function Map() {
 
   const drawAdminBorder = () => { 
     if(checkPermission()){ 
+      if (mapInstance.current && adminBordersLayer.current && !mapInstance.current.hasLayer(adminBordersLayer.current)) {
+        mapInstance.current.addLayer(adminBordersLayer.current);
+      }
+      setAdminBorderToggle(true);
       activeDrawTool.current = 'border'; 
       borderModeRef.current = 'admin';
-      setBorderLive(true); 
       (mapInstance.current?.pm as any)?.disableDraw(); 
       (mapInstance.current?.pm as any)?.enableDraw('Polygon', { snappable: true }); 
     }
   };
 
-  const toggleEdit = () => { if(checkPermission()) (mapInstance.current?.pm as any)?.toggleGlobalEditMode(); };
+  const togglePolygonEdit = () => {
+    if (!checkPermission()) return;
+    if (mapInstance.current && polygonsLayer.current && !mapInstance.current.hasLayer(polygonsLayer.current)) {
+      mapInstance.current.addLayer(polygonsLayer.current);
+    }
+    setPolygonToggle(true);
+    (mapInstance.current?.pm as any)?.toggleGlobalEditMode();
+  };
+
+  const toggleRoadEdit = () => {
+    if (!checkPermission()) return;
+    if (mapInstance.current && roadsLayer.current && !mapInstance.current.hasLayer(roadsLayer.current)) {
+      mapInstance.current.addLayer(roadsLayer.current);
+    }
+    setRoadToggle(true);
+    (mapInstance.current?.pm as any)?.toggleGlobalEditMode();
+  };
+
+  const toggleBorderEdit = () => {
+    if (!checkPermission()) return;
+    if (mapInstance.current && zoneBordersLayer.current && !mapInstance.current.hasLayer(zoneBordersLayer.current)) {
+      mapInstance.current.addLayer(zoneBordersLayer.current);
+    }
+    if (mapInstance.current && adminBordersLayer.current && !mapInstance.current.hasLayer(adminBordersLayer.current)) {
+      mapInstance.current.addLayer(adminBordersLayer.current);
+    }
+    setZoneBorderToggle(true);
+    setAdminBorderToggle(true);
+    (mapInstance.current?.pm as any)?.toggleGlobalEditMode();
+  };
+
   const toggleCut = () => { if(checkPermission()) (mapInstance.current?.pm as any)?.toggleGlobalCutMode(); };
   const toggleRotate = () => { if(checkPermission()) (mapInstance.current?.pm as any)?.toggleGlobalRotateMode(); };
   const toggleRemove = () => { if(checkPermission()) (mapInstance.current?.pm as any)?.toggleGlobalRemovalMode(); };
 
   const updateMarkerColorLocally = (id: string, colorHex: string) => {
-    pointsLayer.current?.eachLayer((layer: any) => { if (layer.options.dbId === id) layer.setStyle({ fillColor: colorHex }); });
-    polygonsLayer.current?.eachLayer((layer: any) => { if (layer.options.dbId === id) layer.setStyle({ fillColor: colorHex }); });
+    pointsLayer.current?.eachLayer((layer: any) => { 
+      if (layer.options?.dbId === id) layer.setStyle({ fillColor: colorHex }); 
+    });
+
+    polygonsLayer.current?.eachLayer((group: any) => { 
+      if (group.eachLayer) {
+        group.eachLayer((sub: any) => {
+          if (sub.options?.dbId === id) sub.setStyle({ fillColor: colorHex });
+        });
+      } else if (group.options?.dbId === id) {
+        group.setStyle({ fillColor: colorHex });
+      }
+    });
   };
 
   const handlePhotoUpload = async (e: any) => {
@@ -842,15 +1102,19 @@ export default function Map() {
 
   const handleQuickPay = async () => {
     if (!selectedHome) return;
-    const startIdx = monthsList.indexOf(payMonth);
+    const startIdx = KHMER_MONTHS.indexOf(payMonth);
     if (startIdx === -1) { alert("សូមជ្រើសរើសខែបង់ប្រាក់!"); return; }
 
-    const recordsToInsert = []; let lastPaidMonthIndex = startIdx; const now = new Date();
+    const recordsToInsert: any[] = []; 
+    let lastPaidMonthIndex = startIdx; 
+    const now = new Date();
     const feeAmount = editForm.monthly_fee === '' ? 0 : Number(editForm.monthly_fee);
     const loopCount = Number(payNumMonths) || 1;
 
     for (let i = 0; i < loopCount; i++) {
-        let targetMonthIndex = (startIdx + i) % 12; let targetMonthNumber = targetMonthIndex + 1; let targetYear = now.getFullYear();
+        let targetMonthIndex = (startIdx + i) % 12; 
+        let targetMonthNumber = targetMonthIndex + 1; 
+        let targetYear = now.getFullYear();
         if (startIdx + i > 11) { targetYear += Math.floor((startIdx + i) / 12); }
         lastPaidMonthIndex = targetMonthIndex;
         recordsToInsert.push({ 
@@ -867,17 +1131,26 @@ export default function Map() {
         });
     }
 
-    const { error: insertErr } = await supabaseClient.from('payments').insert(recordsToInsert);
+    const { data: insertedData, error: insertErr } = await supabaseClient.from('payments').insert(recordsToInsert).select();
     if (insertErr) { alert(`❌ មានបញ្ហាក្នុងការកត់ត្រាការបង់ប្រាក់! Error: ${insertErr.message}`); return; }
 
-    const nextMonthIdx = (lastPaidMonthIndex + 1) % 12; const nextMonthStr = monthsList[nextMonthIdx];
+    const nextMonthIdx = (lastPaidMonthIndex + 1) % 12; 
+    const nextMonthStr = KHMER_MONTHS[nextMonthIdx];
     
     const { error } = await supabaseClient.from('households').update({ status_color: 'blue', payment_month: nextMonthStr, photo_url: editForm.photo_url }).eq('id', selectedHome.id);
 
     if (!error) {
-      alert('✅ ការបង់ប្រាក់ទទួលបានជោគជ័យ!'); updateMarkerColorLocally(selectedHome.id, '#2563eb'); 
+      alert('✅ ការបង់ប្រាក់ទទួលបានជោគជ័យ!'); 
+      updateMarkerColorLocally(selectedHome.id, '#2563eb'); 
       const updatedHome = { ...selectedHome, status_color: 'blue', payment_month: nextMonthStr, photo_url: editForm.photo_url };
       setAllData(prev => prev.map(item => item.id === selectedHome.id ? updatedHome : item));
+      
+      if (insertedData) {
+        setPaymentsData(prev => [...insertedData, ...prev]);
+      } else {
+        setPaymentsData(prev => [...recordsToInsert, ...prev]);
+      }
+
       setSelectedHome(null); 
     } else { alert(`❌ បរាជ័យក្នុងការ Update ស្ថានភាពផ្ទះ! Error: ${error.message}`); }
   };
@@ -921,41 +1194,65 @@ export default function Map() {
     updateMarkerColorLocally(selectedHome.id, '#f59e0b'); 
     const updatedHome = { ...selectedHome, status_color: 'yellow', payment_month: monthStr };
     setAllData(prev => prev.map(item => item.id === selectedHome.id ? updatedHome : item));
-    setEditForm({...editForm, status_color: 'yellow', payment_month: monthStr}); setSelectedHome(updatedHome);
+    setEditForm({...editForm, status_color: 'yellow', payment_month: monthStr}); 
+    setSelectedHome(updatedHome);
+    
+    setPaymentsData(prev => prev.filter(p => p.id !== paymentId));
     handleOpenHistory(); 
   };
 
   const saveRoadData = async () => {
       if (roadEditData.isNew) {
-          const { data } = await supabaseClient.from('roads').insert({ geojson: roadEditData.geojson, name: roadEditData.name, width: roadEditData.width, address: roadEditData.address, road_type: roadEditData.road_type }).select().single();
-          if (data) { addRoadToMap(data); setRoadToggle(true); }
+          const { data } = await supabaseClient.from('roads').insert({ 
+            geojson: roadEditData.geojson, 
+            name: roadEditData.name, 
+            width: roadEditData.width, 
+            address: roadEditData.address, 
+            road_type: roadEditData.road_type 
+          }).select().single();
+          if (data) { 
+            addRoadToMap(data); 
+            setRoadToggle(true); 
+          }
       } else {
-          const { data } = await supabaseClient.from('roads').update({ name: roadEditData.name, width: roadEditData.width, address: roadEditData.address, road_type: roadEditData.road_type }).eq('id', roadEditData.id).select().single();
-          if (data) { roadsLayer.current?.eachLayer((l: any) => { if(l.options.dbId === roadEditData.id) roadsLayer.current?.removeLayer(l); }); addRoadToMap(data); }
+          const { data } = await supabaseClient.from('roads').update({ 
+            name: roadEditData.name, 
+            width: roadEditData.width, 
+            address: roadEditData.address, 
+            road_type: roadEditData.road_type 
+          }).eq('id', roadEditData.id).select().single();
+          if (data) { 
+            roadsLayer.current?.eachLayer((l: any) => { 
+              if(l.options.dbId === roadEditData.id) roadsLayer.current?.removeLayer(l); 
+            }); 
+            addRoadToMap(data); 
+          }
       }
       setRoadEditData(null); 
   };
 
   const handleSearch = async () => {
     if (!searchQuery.trim()) return;
-    const { data } = await supabaseClient.from('households').select('*').ilike('custom_id', `%${searchQuery}%`).limit(1);
+    const queryTerm = searchQuery.trim();
+    
+    const { data } = await supabaseClient
+      .from('households')
+      .select('*')
+      .or(`custom_id.ilike.%${queryTerm}%,customer_name.ilike.%${queryTerm}%`)
+      .limit(1);
+
     if (data && data.length > 0) {
       const h = data[0];
       if (mapInstance.current && h.lat && h.lng) mapInstance.current.flyTo([h.lat, h.lng], 18, { animate: true, duration: 1.5 });
       const freshData = allDataRef.current.find((item: any) => item.id === h.id) || h;
-      setSelectedHome(freshData); 
-      setEditForm({ custom_id: freshData.custom_id || '', customer_name: freshData.customer_name || '', monthly_fee: freshData.monthly_fee || 0, zone: freshData.zone || '', status_color: freshData.status_color || 'yellow', payment_month: freshData.payment_month || 'ខែមករា', photo_url: freshData.photo_url || '' }); 
-    } else alert('រកមិនឃើញលេខកូដនេះទេ!');
+      handleSelectHousehold(freshData);
+    } else {
+      alert('រកមិនឃើញលេខកូដ ឬឈ្មោះអតិថិជននេះទេ!');
+    }
   };
 
   const openReport = async () => {
     setActiveView('report');
-    let query = supabaseClient.from('payments').select('*');
-    if (currentUserRef.current && currentUserRef.current.role !== 'super_admin') { 
-      query = query.eq('zone', currentUserRef.current.name); 
-    }
-    const { data } = await query; 
-    if (data) setPaymentsData(data);
   };
 
   const handleGlobalMonthChange = async (e: any) => {
@@ -981,16 +1278,21 @@ export default function Map() {
         if (currentUserRef.current.role !== 'super_admin') query = query.eq('zone', currentUserRef.current.name); else if (reportZone) query = query.eq('zone', reportZone); else query = query.not('id', 'is', null); 
         await query; 
         let colorHex = val === 'blue' ? '#2563eb' : val === 'red' ? '#dc2626' : val === 'black' ? '#020617' : '#f59e0b';
+        
         pointsLayer.current?.eachLayer((layer: any) => {
             const h = allDataRef.current.find(d => d.id === layer.options.dbId);
             if (h && (currentUserRef.current.role === 'super_admin' ? (reportZone ? h.zone === reportZone : true) : h.zone === currentUserRef.current.name)) {
                 layer.setStyle({ fillColor: colorHex });
             }
         });
-        polygonsLayer.current?.eachLayer((layer: any) => {
-            const h = allDataRef.current.find(d => d.id === layer.options.dbId);
-            if (h && (currentUserRef.current.role === 'super_admin' ? (reportZone ? h.zone === reportZone : true) : h.zone === currentUserRef.current.name)) {
-                layer.setStyle({ fillColor: colorHex });
+        polygonsLayer.current?.eachLayer((group: any) => {
+            if (group.eachLayer) {
+              group.eachLayer((sub: any) => {
+                const h = allDataRef.current.find(d => d.id === sub.options?.dbId);
+                if (h && (currentUserRef.current.role === 'super_admin' ? (reportZone ? h.zone === reportZone : true) : h.zone === currentUserRef.current.name)) {
+                  sub.setStyle({ fillColor: colorHex });
+                }
+              });
             }
         });
         setAllData(prev => prev.map(item => {
@@ -1028,6 +1330,8 @@ export default function Map() {
   const uniqueZones = Array.from(new Set(allData.map(h => h.zone).filter(Boolean)));
   const paginatedHouseholds = reportHouseholds.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
   const totalPages = Math.ceil(totalHouses / itemsPerPage);
+
+  const isPC = deviceChoice === 'pc';
 
   return (
     <div className="flex flex-col h-screen w-full bg-slate-900 overflow-hidden font-sans relative">
@@ -1125,11 +1429,19 @@ export default function Map() {
 
             <div className={`absolute top-[80px] left-4 z-[1050] w-[calc(100vw-32px)] sm:w-[340px] flex flex-col gap-4 transition-all duration-300 transform ${isToolsPanelOpen ? 'translate-x-0 opacity-100 pointer-events-auto' : '-translate-x-[400px] opacity-0 pointer-events-none'} hide-scrollbar overflow-y-auto max-h-[calc(100vh-100px)] pb-6`}>
             <div className="bg-white/90 backdrop-blur-xl border border-white shadow-lg rounded-2xl p-3 flex items-center gap-2">
-                <input type="text" placeholder="ស្វែងរកលេខកូដ (KPC...)" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} className="flex-1 w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 outline-none text-sm font-bold text-slate-700 focus:border-indigo-500" />
+                <input 
+                  type="text" 
+                  placeholder="ស្វែងរកលេខកូដ ឬឈ្មោះអតិថិជន..." 
+                  value={searchQuery} 
+                  onChange={(e) => setSearchQuery(e.target.value)} 
+                  onKeyDown={(e) => e.key === 'Enter' && handleSearch()} 
+                  className="flex-1 w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 outline-none text-xs sm:text-sm font-bold text-slate-700 focus:border-indigo-500" 
+                />
                 <button onClick={handleSearch} className="bg-indigo-600 text-white p-2.5 rounded-xl hover:bg-indigo-700 cursor-pointer shadow-md"><Search size={20} /></button>
                 <button onClick={() => setIsToolsPanelOpen(false)} className="bg-rose-50 text-rose-600 p-2.5 rounded-xl hover:bg-rose-100 cursor-pointer border border-rose-200 shadow-sm" title="បិទផ្ទាំង"><X size={20} /></button>
             </div>
 
+            {/* ១. ចំណុចផ្ទះ (Point) */}
             <div className="bg-white/90 backdrop-blur-xl border border-white shadow-lg rounded-3xl p-5">
                 <h3 className="text-center font-black text-slate-700 text-sm border-b-2 border-indigo-500/20 pb-3 mb-4">📍 ចំណុចផ្ទះ (Point)</h3>
                 <div className="flex justify-around mb-4">
@@ -1139,56 +1451,93 @@ export default function Map() {
                 <div className="flex justify-center"><Toggle enabled={pointToggle} setEnabled={setPointToggle} /></div>
             </div>
 
+            {/* ២. ដំបូល (Polygon) */}
             {(!currentUser || currentUser?.role === 'super_admin' || currentUser?.can_edit_roof) && (
                 <div className="bg-white/90 backdrop-blur-xl border border-white shadow-lg rounded-3xl p-5">
                 <h3 className="text-center font-black text-slate-700 text-sm border-b-2 border-indigo-500/20 pb-3 mb-4">🛑 ដំបូល (Polygon)</h3>
-                <div className="flex justify-between mb-4">
-                    <button onClick={drawPolygon} className="flex flex-col items-center gap-1 cursor-pointer text-indigo-600 hover:scale-110"><Hexagon size={20} /><span className="text-[10px] font-bold text-slate-600">Add</span></button>
-                    <button onClick={toggleEdit} className="flex flex-col items-center gap-1 cursor-pointer text-amber-500 hover:scale-110"><MapPin size={20} /><span className="text-[10px] font-bold text-slate-600">Edit</span></button>
-                    <button onClick={toggleCut} className="flex flex-col items-center gap-1 cursor-pointer text-sky-500 hover:scale-110"><Scissors size={20} /><span className="text-[10px] font-bold text-slate-600">Cut</span></button>
-                    <button onClick={toggleRemove} className="flex flex-col items-center gap-1 cursor-pointer text-rose-500 hover:scale-110"><Eraser size={20} /><span className="text-[10px] font-bold text-slate-600">Remove</span></button>
-                    <button onClick={toggleRotate} className="flex flex-col items-center gap-1 cursor-pointer text-emerald-500 hover:scale-110"><RotateCw size={20} /><span className="text-[10px] font-bold text-slate-600">Rotate</span></button>
+                
+                {isPC && (
+                  <div className="flex justify-between mb-4">
+                      <button onClick={drawPolygon} className="flex flex-col items-center gap-1 cursor-pointer text-indigo-600 hover:scale-110"><Hexagon size={20} /><span className="text-[10px] font-bold text-slate-600">Add</span></button>
+                      <button onClick={togglePolygonEdit} className="flex flex-col items-center gap-1 cursor-pointer text-amber-500 hover:scale-110"><MapPin size={20} /><span className="text-[10px] font-bold text-slate-600">Edit</span></button>
+                      <button onClick={toggleCut} className="flex flex-col items-center gap-1 cursor-pointer text-sky-500 hover:scale-110"><Scissors size={20} /><span className="text-[10px] font-bold text-slate-600">Cut</span></button>
+                      <button onClick={toggleRemove} className="flex flex-col items-center gap-1 cursor-pointer text-rose-500 hover:scale-110"><Eraser size={20} /><span className="text-[10px] font-bold text-slate-600">Remove</span></button>
+                      <button onClick={toggleRotate} className="flex flex-col items-center gap-1 cursor-pointer text-emerald-500 hover:scale-110"><RotateCw size={20} /><span className="text-[10px] font-bold text-slate-600">Rotate</span></button>
+                  </div>
+                )}
+                
+                <div className="flex justify-center items-center gap-2">
+                  {!isPC && <span className="text-xs font-bold text-slate-500">បើកមើលដំបូល៖</span>}
+                  <Toggle enabled={polygonToggle} setEnabled={setPolygonToggle} />
                 </div>
-                <div className="flex justify-center"><Toggle enabled={polygonToggle} setEnabled={setPolygonToggle} /></div>
                 </div>
             )}
 
+            {/* ៣. ផ្លូវ (Road) */}
             {(!currentUser || currentUser?.role === 'super_admin' || currentUser?.can_edit_road) && (
                 <div className="bg-white/90 backdrop-blur-xl border border-white shadow-lg rounded-3xl p-5">
                 <h3 className="text-center font-black text-slate-700 text-sm border-b-2 border-indigo-500/20 pb-3 mb-4">🛣️ ផ្លូវ (Road)</h3>
-                <div className="flex justify-around mb-4">
-                    <button onClick={drawRoad} className="flex flex-col items-center gap-1.5 cursor-pointer group"><div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-indigo-600 shadow-sm border border-slate-200 group-hover:border-indigo-400 transition-all"><Slash size={22} /></div><span className="text-[11px] font-bold text-slate-600">Add Road</span></button>
-                    <button onClick={toggleEdit} className="flex flex-col items-center gap-1.5 cursor-pointer group"><div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-amber-500 shadow-sm border border-slate-200 group-hover:border-amber-400 transition-all"><Move size={22} /></div><span className="text-[11px] font-bold text-slate-600">Edit Road</span></button>
-                    <button onClick={toggleRemove} className="flex flex-col items-center gap-1.5 cursor-pointer group"><div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-rose-500 shadow-sm border border-slate-200 group-hover:border-rose-400 transition-all"><Ban size={22} /></div><span className="text-[11px] font-bold text-slate-600">Delete</span></button>
+                
+                {isPC && (
+                  <div className="flex justify-around mb-4">
+                      <button onClick={drawRoad} className="flex flex-col items-center gap-1.5 cursor-pointer group"><div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-indigo-600 shadow-sm border border-slate-200 group-hover:border-indigo-400 transition-all"><Slash size={22} /></div><span className="text-[11px] font-bold text-slate-600">Add Road</span></button>
+                      <button onClick={toggleRoadEdit} className="flex flex-col items-center gap-1.5 cursor-pointer group"><div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-amber-500 shadow-sm border border-slate-200 group-hover:border-amber-400 transition-all"><Move size={22} /></div><span className="text-[11px] font-bold text-slate-600">Edit Road</span></button>
+                      <button onClick={toggleRemove} className="flex flex-col items-center gap-1.5 cursor-pointer group"><div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-rose-500 shadow-sm border border-slate-200 group-hover:border-rose-400 transition-all"><Ban size={22} /></div><span className="text-[11px] font-bold text-slate-600">Delete</span></button>
+                  </div>
+                )}
+
+                <div className="flex justify-center items-center gap-2">
+                  {!isPC && <span className="text-xs font-bold text-slate-500">បើកមើលផ្លូវ៖</span>}
+                  <Toggle enabled={roadToggle} setEnabled={setRoadToggle} />
                 </div>
-                <div className="flex justify-center"><Toggle enabled={roadToggle} setEnabled={setRoadToggle} /></div>
                 </div>
             )}
 
+            {/* ៤. ព្រំដែន (Border) */}
             {(!currentUser || currentUser?.role === 'super_admin' || currentUser?.can_edit_border) && (
                 <div className="bg-white/90 backdrop-blur-xl border border-white shadow-lg rounded-3xl p-5">
                 <h3 className="text-center font-black text-slate-700 text-sm border-b-2 border-indigo-500/20 pb-3 mb-4">🌐 ព្រំដែន (Border)</h3>
                 
-                <div className="grid grid-cols-2 gap-2 mb-4">
-                  <button onClick={drawZoneBorder} className="flex flex-col items-center justify-center p-2.5 bg-pink-50 border border-pink-200 hover:bg-pink-100 rounded-xl transition-all text-pink-700 cursor-pointer">
-                    <Hexagon size={20} className="mb-1 text-pink-600" />
-                    <span className="text-[10px] font-bold">តំបន់ប្រមូល</span>
-                  </button>
-                  <button onClick={drawAdminBorder} className="flex flex-col items-center justify-center p-2.5 bg-purple-50 border border-purple-200 hover:bg-purple-100 rounded-xl transition-all text-purple-700 cursor-pointer">
-                    <Building size={20} className="mb-1 text-purple-600" />
-                    <span className="text-[10px] font-bold">ព្រំប្រទល់រដ្ឋបាល</span>
-                  </button>
+                {isPC && (
+                  <>
+                    <div className="grid grid-cols-2 gap-2 mb-4">
+                      <button onClick={drawZoneBorder} className="flex flex-col items-center justify-center p-2.5 bg-pink-50 border border-pink-200 hover:bg-pink-100 rounded-xl transition-all text-pink-700 cursor-pointer">
+                        <Hexagon size={20} className="mb-1 text-pink-600" />
+                        <span className="text-[10px] font-bold">តំបន់ប្រមូល</span>
+                      </button>
+                      <button onClick={drawAdminBorder} className="flex flex-col items-center justify-center p-2.5 bg-purple-50 border border-purple-200 hover:bg-purple-100 rounded-xl transition-all text-purple-700 cursor-pointer">
+                        <Building size={20} className="mb-1 text-purple-600" />
+                        <span className="text-[10px] font-bold">ព្រំប្រទល់រដ្ឋបាល</span>
+                      </button>
+                    </div>
+
+                    <div className="flex justify-between mb-5">
+                        <button onClick={toggleBorderEdit} className="flex flex-col items-center gap-1 cursor-pointer text-amber-500 hover:scale-110"><MapPin size={18} /><span className="text-[10px] font-bold text-slate-600">Edit</span></button>
+                        <button onClick={toggleCut} className="flex flex-col items-center gap-1 cursor-pointer text-sky-500 hover:scale-110"><Scissors size={18} /><span className="text-[10px] font-bold text-slate-600">Cut</span></button>
+                        <button onClick={toggleRemove} className="flex flex-col items-center gap-1 cursor-pointer text-rose-500 hover:scale-110"><Eraser size={18} /><span className="text-[10px] font-bold text-slate-600">Remove</span></button>
+                        <button onClick={toggleRotate} className="flex flex-col items-center gap-1 cursor-pointer text-emerald-500 hover:scale-110"><RotateCw size={18} /><span className="text-[10px] font-bold text-slate-600">Rotate</span></button>
+                    </div>
+                  </>
+                )}
+
+                <div className="flex flex-col gap-3 pt-2 border-t border-slate-100">
+                    <div className="flex justify-between items-center">
+                      <span className="text-[11px] font-bold text-slate-700 flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full bg-pink-500 ring-2 ring-pink-200"></span> 
+                        បង្ហាញតំបន់ប្រមូល
+                      </span>
+                      <Toggle enabled={zoneBorderToggle} setEnabled={setZoneBorderToggle} />
+                    </div>
+
+                    <div className="flex justify-between items-center">
+                      <span className="text-[11px] font-bold text-slate-700 flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full bg-purple-600 ring-2 ring-purple-200"></span> 
+                        បង្ហាញព្រំប្រទល់រដ្ឋបាល
+                      </span>
+                      <Toggle enabled={adminBorderToggle} setEnabled={setAdminBorderToggle} />
+                    </div>
                 </div>
 
-                <div className="flex justify-between mb-5">
-                    <button onClick={toggleEdit} className="flex flex-col items-center gap-1 cursor-pointer text-amber-500 hover:scale-110"><MapPin size={18} /><span className="text-[10px] font-bold text-slate-600">Edit</span></button>
-                    <button onClick={toggleCut} className="flex flex-col items-center gap-1 cursor-pointer text-sky-500 hover:scale-110"><Scissors size={18} /><span className="text-[10px] font-bold text-slate-600">Cut</span></button>
-                    <button onClick={toggleRemove} className="flex flex-col items-center gap-1 cursor-pointer text-rose-500 hover:scale-110"><Eraser size={18} /><span className="text-[10px] font-bold text-slate-600">Remove</span></button>
-                    <button onClick={toggleRotate} className="flex flex-col items-center gap-1 cursor-pointer text-emerald-500 hover:scale-110"><RotateCw size={18} /><span className="text-[10px] font-bold text-slate-600">Rotate</span></button>
-                </div>
-                <div className="flex flex-col gap-3">
-                    <div className="flex justify-between items-center"><span className="text-[11px] font-bold text-slate-600 flex items-center gap-2"><Spline className="text-purple-500" size={16} /> បើកបង្ហាញព្រំដែន</span><Toggle enabled={borderLive} setEnabled={setBorderLive} /></div>
-                </div>
                 </div>
             )}
 
@@ -1232,12 +1581,12 @@ export default function Map() {
                 <button onClick={() => setDeviceChoice('pc')} className="flex flex-col items-center justify-center p-6 border-2 border-slate-200 rounded-2xl hover:border-indigo-500 hover:bg-indigo-50 transition-all cursor-pointer group">
                     <Monitor className="text-slate-400 group-hover:text-indigo-600 mb-3 transition-colors" size={48} />
                     <span className="font-bold text-slate-700 group-hover:text-indigo-700">Option 1: ប្រើ PC</span>
-                    <span className="text-[10px] text-slate-400 mt-1">(ផែនទីធម្មតា)</span>
+                    <span className="text-[10px] text-slate-400 mt-1">(ផែនទីពេញលេញ & គូរ GIS)</span>
                 </button>
                 <button onClick={() => setDeviceChoice('mobile')} className="flex flex-col items-center justify-center p-6 border-2 border-slate-200 rounded-2xl hover:border-blue-500 hover:bg-blue-50 transition-all cursor-pointer group">
                     <Smartphone className="text-slate-400 group-hover:text-blue-600 mb-3 transition-colors" size={48} />
                     <span className="font-bold text-slate-700 group-hover:text-blue-700">Option 2: ប្រើ Mobile</span>
-                    <span className="text-[10px] text-slate-400 mt-1">(បើក Live Location 📍)</span>
+                    <span className="text-[10px] text-slate-400 mt-1">(ចុះប្រមូលប្រាក់ & Live Location 📍)</span>
                 </button>
                 </div>
             </div>
@@ -1273,44 +1622,21 @@ export default function Map() {
             />
         )}
 
-        {historyModalOpen && (
-            <div className="absolute inset-0 z-[10000] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md h-[80%] max-h-[600px] flex flex-col overflow-hidden">
-                <div className="p-4 border-b border-slate-100 bg-indigo-50 flex justify-between items-center"><h3 className="font-bold text-indigo-800 text-base sm:text-lg flex items-center"><History className="mr-2 text-indigo-600" size={20} />ប្រវត្តិបង់ប្រាក់</h3><button onClick={() => setHistoryModalOpen(false)} className="text-slate-400 hover:text-rose-500 bg-white rounded-full w-8 h-8 flex items-center justify-center shadow-sm border border-slate-200 cursor-pointer"><X size={18} /></button></div>
-                <div className="p-4 overflow-y-auto flex-1 space-y-3 bg-slate-50">
-                {isLoadingHistory ? ( <div className="flex flex-col items-center justify-center h-full text-slate-500 py-10"><Clock className="animate-spin text-indigo-500 mb-3" size={32} /><p className="font-bold">កំពុងទាញយកទិន្នន័យ...</p></div> ) : historyData.length === 0 ? ( <div className="text-center text-slate-500 font-bold py-5 bg-white rounded-xl border border-slate-200 shadow-sm">មិនមានប្រវត្តិបង់ប្រាក់ទេ</div> ) : (
-                    <>
-                    <div className="text-center mb-4 text-xs sm:text-sm font-bold text-slate-600 bg-white py-2 rounded-lg border border-slate-200 shadow-sm">ប្រវត្តិបង់ប្រាក់ចុងក្រោយ</div>
-                    {historyData.map((record) => {
-                        const dateObj = new Date(record.paid_at || record.created_at || Date.now());
-                        const formattedDate = isNaN(dateObj.getTime()) ? '---' : `${dateObj.getDate().toString().padStart(2, '0')}/${(dateObj.getMonth()+1).toString().padStart(2, '0')}/${dateObj.getFullYear()} - ${dateObj.getHours().toString().padStart(2, '0')}:${dateObj.getMinutes().toString().padStart(2, '0')}`;
-                        const khmerMonthDisplay = monthsList[record.month - 1] || `ខែទី ${record.month}`;
-                        return (
-                        <div key={record.id} className="flex justify-between items-center p-3 sm:p-4 bg-white border-l-4 border-emerald-500 rounded-xl shadow-sm mb-3">
-                            <div><div className="font-bold text-slate-800 text-sm sm:text-base">{khmerMonthDisplay} ឆ្នាំ {record.year}</div><div className="text-[10px] sm:text-xs text-slate-500 font-medium mt-1 flex items-center gap-1"><Clock size={12} /> {formattedDate}</div><div className="text-xs sm:text-sm font-bold text-emerald-600 mt-1">៛ {Number(record.amount || 0).toLocaleString()}</div></div>
-                            <div className="flex items-center gap-2"><div className="text-emerald-600 font-bold bg-emerald-50 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full text-[10px] sm:text-xs border border-emerald-100 flex items-center"><CheckCircle className="mr-1" size={14} /> បានបង់</div><button onClick={() => handleUndoPayment(record.id, khmerMonthDisplay)} className="w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center rounded-full bg-rose-50 text-rose-500 hover:bg-rose-500 hover:text-white border border-rose-200 transition-colors shadow-sm cursor-pointer" title="លុបការបង់ប្រាក់ខែនេះ"><RotateCcw size={14} /></button></div>
-                        </div>
-                        );
-                    })}
-                    </>
-                )}
-                </div>
-            </div>
-            </div>
-        )}
+        <HistoryModal 
+          isOpen={historyModalOpen}
+          onClose={() => setHistoryModalOpen(false)}
+          isLoading={isLoadingHistory}
+          historyData={historyData}
+          onUndoPayment={handleUndoPayment}
+          monthsList={KHMER_MONTHS}
+        />
 
-        {roadEditData && (
-            <div className="absolute inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-                <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5 sm:p-6 transform transition-all">
-                    <h3 className="font-bold text-indigo-800 text-base sm:text-lg mb-4 flex items-center"><Road className="mr-2 text-indigo-500" size={20} />{roadEditData.isNew ? "បន្ថែមផ្លូវថ្មី" : "កែប្រែព័ត៌មានផ្លូវ"}</h3>
-                    <label className="block text-[10px] sm:text-xs font-bold text-slate-500 mb-1">ឈ្មោះផ្លូវ (Road Name):</label><input type="text" value={roadEditData.name} onChange={e => setRoadEditData({...roadEditData, name: e.target.value})} className="w-full border border-slate-300 p-2 sm:p-2.5 mb-3 rounded-lg outline-none focus:border-indigo-500 font-bold text-sm" />
-                    <label className="block text-[10px] sm:text-xs font-bold text-slate-500 mb-1">ទំហំផ្លូវ (Width e.g. 5m):</label><input type="text" value={roadEditData.width} onChange={e => setRoadEditData({...roadEditData, width: e.target.value})} className="w-full border border-slate-300 p-2 sm:p-2.5 mb-3 rounded-lg outline-none focus:border-indigo-500 font-bold text-sm" />
-                    <label className="block text-[10px] sm:text-xs font-bold text-slate-500 mb-1">អាសយដ្ឋាន (Address):</label><input type="text" value={roadEditData.address} onChange={e => setRoadEditData({...roadEditData, address: e.target.value})} className="w-full border border-slate-300 p-2 sm:p-2.5 mb-3 rounded-lg outline-none focus:border-indigo-500 font-bold text-sm" />
-                    <label className="block text-[10px] sm:text-xs font-bold text-slate-500 mb-1">ប្រភេទផ្លូវ (Road Type):</label><select value={roadEditData.road_type} onChange={e => setRoadEditData({...roadEditData, road_type: e.target.value})} className="w-full border border-slate-300 p-2 sm:p-2.5 mb-5 rounded-lg outline-none focus:border-indigo-500 font-bold bg-slate-50 text-indigo-700 text-sm"><option value="Land road">Land road (ផ្លូវដី)</option><option value="Concrete road">Concrete road (ផ្លូវបេតុង)</option><option value="Hight Ways road">Hight Ways road (ផ្លូវហាយវេ)</option><option value="Asphalt road">Asphalt road (ផ្លូវកៅស៊ូរ)</option><option value="Nation road">Nation road (ផ្លូវជាតិ)</option></select>
-                    <div className="flex gap-2"><button onClick={saveRoadData} className="bg-indigo-600 hover:bg-indigo-700 text-white flex-1 py-2 sm:py-3 rounded-lg font-bold shadow-md transition-colors cursor-pointer text-sm">រក្សាទុក</button><button onClick={() => setRoadEditData(null)} className="bg-slate-200 hover:bg-slate-300 text-slate-700 flex-1 py-2 sm:py-3 rounded-lg font-bold transition-colors cursor-pointer text-sm">បោះបង់</button></div>
-                </div>
-            </div>
-        )}
+        <RoadEditModal 
+          roadEditData={roadEditData}
+          setRoadEditData={setRoadEditData}
+          onSave={saveRoadData}
+        />
+
       </div>
     </div>
   );

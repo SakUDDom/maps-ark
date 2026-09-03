@@ -1,75 +1,264 @@
 'use client';
-import { Camera, CheckCircle, Clock, DollarSign, History, Printer, Save, Sliders, User, X, Loader2 } from 'lucide-react';
+import React, { useRef } from 'react';
+import { 
+  User, X, Camera, Printer, Save, History, 
+  SlidersHorizontal, CheckCircle2, Loader2, DollarSign 
+} from 'lucide-react';
+import { KHMER_MONTHS } from '../constants/months';
+
+interface CustomerDetailProps {
+  selectedHome: any;
+  setSelectedHome: (home: any) => void;
+  editForm: any;
+  setEditForm: (form: any) => void;
+  isUploading: boolean;
+  handlePhotoUpload: (e: any) => void;
+  payMonth: string;
+  setPayMonth: (m: string) => void;
+  payNumMonths: any;
+  setPayNumMonths: (n: any) => void;
+  handleQuickPay: () => void;
+  isManualEditOpen: boolean;
+  setIsManualEditOpen: (open: boolean) => void;
+  handleOpenHistory: () => void;
+  handleUpdate: () => void;
+  currentUser: any;
+}
 
 export default function CustomerDetail({
-  selectedHome, setSelectedHome, editForm, setEditForm,
-  isUploading, handlePhotoUpload, payMonth, setPayMonth,
-  payNumMonths, setPayNumMonths, handleQuickPay,
-  isManualEditOpen, setIsManualEditOpen, handleOpenHistory,
-  handleUpdate, currentUser
-}: any) {
+  selectedHome,
+  setSelectedHome,
+  editForm,
+  setEditForm,
+  isUploading,
+  handlePhotoUpload,
+  payMonth,
+  setPayMonth,
+  payNumMonths,
+  setPayNumMonths,
+  handleQuickPay,
+  isManualEditOpen,
+  setIsManualEditOpen,
+  handleOpenHistory,
+  handleUpdate,
+  currentUser
+}: CustomerDetailProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   if (!selectedHome) return null;
-  const monthsList = ['ខែមករា', 'ខែកកុម្ភៈ', 'ខែមីនា', 'ខែមេសា', 'ខែឧសភា', 'ខែមិថុនា', 'ខែកក្កដា', 'ខែសីហា', 'ខែកញ្ញា', 'ខែតុលា', 'ខែវិច្ឆិកា', 'ខែធ្នូ'];
 
   return (
-    <div className="absolute top-[80px] right-0 sm:right-4 left-0 sm:left-auto mx-auto sm:mx-0 z-[9999] w-[calc(100vw-32px)] sm:w-[380px] bg-white rounded-3xl shadow-2xl flex flex-col overflow-hidden max-h-[calc(100vh-100px)] border border-slate-200">
-      <div className="bg-white p-4 border-b border-slate-100 flex justify-between items-center">
-        <h3 className="font-black text-indigo-900 text-sm flex items-center gap-2"><User className="text-indigo-600" size={18} /> ព័ត៌មានអតិថិជន</h3>
-        <button onClick={() => setSelectedHome(null)} className="text-slate-400 hover:text-rose-500 cursor-pointer"><X size={20} /></button>
+    <div className="absolute top-[80px] right-4 z-[1050] w-[calc(100vw-32px)] sm:w-[380px] max-h-[calc(100vh-100px)] overflow-y-auto bg-white/95 backdrop-blur-xl border border-white shadow-2xl rounded-3xl p-5 hide-scrollbar animate-in slide-in-from-right-4 duration-200">
+      
+      {/* Header */}
+      <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+            <User size={18} />
+          </div>
+          <h3 className="font-black text-slate-800 text-base">ព័ត៌មានអតិថិជន</h3>
+        </div>
+        <button 
+          onClick={() => setSelectedHome(null)} 
+          className="w-8 h-8 rounded-full bg-slate-100 hover:bg-rose-50 text-slate-400 hover:text-rose-600 flex items-center justify-center transition-colors cursor-pointer"
+        >
+          <X size={16} />
+        </button>
       </div>
-      <div className="p-5 flex flex-col gap-4 overflow-y-auto hide-scrollbar bg-white pb-10">
-        <div className="flex flex-col gap-1">
-          <span className="text-[11px] text-slate-700 font-bold flex items-center gap-1">
-            <Camera size={14} /> រូបថត (ចុចដើម្បីបញ្ចូល)៖
-          </span>
-          <label className="w-full h-32 bg-slate-100 rounded-lg overflow-hidden border border-slate-200 flex flex-col items-center justify-center relative cursor-pointer hover:bg-slate-200 transition-colors">
-            {isUploading ? (
-              <div className="flex flex-col items-center text-indigo-500">
-                <Loader2 className="animate-spin mb-2" size={24} />
-                <span className="text-xs font-bold">កំពុងបញ្ជូនរូបភាព...</span>
-              </div>
-            ) : editForm.photo_url ? (
-              <>
-                <img src={editForm.photo_url} className="w-full h-full object-cover" alt="Customer" />
-                <div className="absolute bottom-2 right-2 bg-black/60 text-white p-1.5 rounded-lg backdrop-blur-md shadow-md"><Camera size={16} /></div>
-              </>
-            ) : (
-              <div className="flex flex-col items-center text-slate-400">
-                <Camera size={24} className="mb-1" />
-                <span className="text-xs font-bold text-slate-500">ចុចទីនេះដើម្បីបញ្ចូលរូបថត</span>
-              </div>
-            )}
-            <input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} disabled={isUploading} />
-          </label>
-        </div>
 
-        <div className="flex flex-col gap-1.5"><span className="text-[11px] text-slate-700 font-bold">លេខកូដផ្ទះ៖</span><input type="text" value={editForm.custom_id} onChange={(e) => setEditForm({...editForm, custom_id: e.target.value})} className="w-full px-3 py-2.5 text-sm font-bold text-slate-800 bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-500 transition-colors" /></div>
-        <div className="flex flex-col gap-1.5"><span className="text-[11px] text-slate-700 font-bold">ឈ្មោះអតិថិជន (ម្ចាស់ហាង/សំអាង)៖</span><input type="text" value={editForm.customer_name} onChange={(e) => setEditForm({...editForm, customer_name: e.target.value})} className="w-full px-3 py-2.5 text-sm font-bold text-slate-800 bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-500 transition-colors" /></div>
-        
-        <div className="flex flex-col gap-1.5"><span className="text-[11px] text-slate-700 font-bold">តម្លៃសេវា (៛)៖</span>
-          <input type="text" value={editForm.monthly_fee === '' ? '' : Number(editForm.monthly_fee).toLocaleString()} onChange={(e) => { const rawValue = e.target.value.replace(/,/g, '').replace(/\D/g, ''); setEditForm({...editForm, monthly_fee: rawValue === '' ? '' : Number(rawValue)}); }} className="w-full px-3 py-2.5 text-sm font-black text-emerald-600 bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-500 transition-colors" />
-        </div>
-
-        <div className="flex flex-col gap-1.5"><span className="text-[11px] text-slate-700 font-bold">តំបន់ (Zone)៖</span><input type="text" value={editForm.zone} onChange={(e) => setEditForm({...editForm, zone: e.target.value})} className="w-full px-3 py-2.5 text-sm font-bold text-slate-800 bg-slate-50 border border-slate-200 rounded-lg outline-none" disabled={currentUser?.role !== 'super_admin'} /></div>
-        {editForm.status_color === 'blue' ? ( <div className="w-full mt-2 p-3 rounded-xl font-bold bg-emerald-50 text-emerald-700 text-[13px] border border-emerald-100 flex items-center justify-center gap-2 shadow-sm"><CheckCircle size={16} /> បានបង់រួចរាល់ (ខែបន្ទាប់៖ {editForm.payment_month})</div> ) : ( <div className="w-full mt-2 p-3 rounded-xl bg-amber-50 text-amber-800 text-sm border border-amber-100 shadow-sm flex flex-col items-center"><div className="font-bold flex items-center gap-2 mb-1 text-[12px]"><Clock size={14} /> ស្ថានភាពបច្ចុប្បន្ន</div><div className="font-black text-amber-700 text-[13px]">{editForm.payment_month} (មិនទាន់បានបង់)</div></div> )}
-        
-        {editForm.status_color !== 'blue' && ( <div className="mt-2 p-4 rounded-xl border border-indigo-100 bg-indigo-50 shadow-sm"><label className="block text-[11px] font-black text-indigo-900 mb-2">បង់ប្រាក់ (រើសខែ និងចំនួនខែ)៖</label><select value={payMonth} onChange={(e) => setPayMonth(e.target.value)} className="w-full mb-3 border border-indigo-200 px-3 py-2 rounded-lg font-bold text-slate-700 bg-white outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer">{monthsList.map((m: any) => <option key={m} value={m}>បង់ចាប់ពី៖ {m}</option>)}</select><div className="flex items-center gap-3"><input type="number" value={payNumMonths} onChange={(e) => setPayNumMonths(e.target.value === '' ? '' : parseInt(e.target.value))} min="1" max="12" className="w-20 border border-indigo-200 px-3 py-2.5 rounded-lg font-bold text-lg text-center outline-none focus:ring-2 focus:ring-amber-400 bg-white shadow-inner" /><button onClick={handleQuickPay} className="flex-1 bg-amber-500 text-white font-bold py-3 rounded-lg hover:bg-amber-600 transition-colors shadow-md flex justify-center items-center gap-2 text-[13px] cursor-pointer"><DollarSign size={16} /> បង់ប្រាក់</button></div></div> )}
-        
-        <div className="mt-2 border border-slate-200 rounded-xl bg-slate-50 shadow-sm">
-          <div onClick={() => setIsManualEditOpen(!isManualEditOpen)} className="p-3 font-bold text-slate-700 text-[12px] cursor-pointer hover:bg-slate-200 flex items-center justify-center gap-2 transition-colors rounded-xl"><Sliders className="text-indigo-500" size={16} /> ជម្រើសកែប្រែដោយដៃ (Manual Edit)</div>
-          {isManualEditOpen && (
-            <div className="p-4 border-t border-slate-200 space-y-3 bg-white rounded-b-xl">
-              <div><label className="block text-xs font-bold mb-1 text-slate-500">ខែត្រូវបង់បន្ទាប់៖</label><select value={editForm.payment_month} onChange={(e: any) => setEditForm({...editForm, payment_month: e.target.value})} className="w-full border px-3 py-2 rounded-lg font-bold text-indigo-700 bg-slate-50 outline-none cursor-pointer">{monthsList.map((m: any) => <option key={m} value={m}>{m}</option>)}</select></div>
-              <div><label className="block text-xs font-bold mb-1 text-slate-500">ស្ថានភាពបង់ប្រាក់៖</label><select value={editForm.status_color} onChange={(e: any) => setEditForm({...editForm, status_color: e.target.value})} className="w-full border px-3 py-2 rounded-lg bg-slate-50 font-bold outline-none cursor-pointer"><option value="blue">🔵 បានបង់</option><option value="yellow">🟡 មិនទាន់បានបង់</option><option value="red">🔴 ទីតាំងបិទ</option><option value="black">⚫ បានបង់តែទុកសិន</option></select></div>
+      {/* រូបភាពផ្ទះ */}
+      <div className="mt-4">
+        <div className="relative w-full h-40 bg-slate-100 rounded-2xl overflow-hidden border border-slate-200 flex items-center justify-center group">
+          {editForm.photo_url ? (
+            <img 
+              src={editForm.photo_url} 
+              alt="House" 
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <div className="flex flex-col items-center text-slate-400">
+              <Camera size={32} />
+              <span className="text-xs font-bold mt-1">មិនទាន់មានរូបភាព</span>
             </div>
           )}
+
+          {/* ប៊ូតុងថត/ប្តូររូបភាព (iOS Friendly) */}
+          <button 
+            type="button"
+            disabled={isUploading}
+            onClick={() => fileInputRef.current?.click()}
+            className="absolute bottom-2 right-2 bg-slate-900/80 hover:bg-slate-900 text-white p-2.5 rounded-xl shadow-lg flex items-center gap-1.5 text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
+          >
+            {isUploading ? <Loader2 size={14} className="animate-spin" /> : <Camera size={14} />}
+            <span>{editForm.photo_url ? 'ប្តូររូប' : 'ថតរូប'}</span>
+          </button>
+
+          <input 
+            ref={fileInputRef}
+            type="file" 
+            accept="image/jpeg,image/png,image/webp" 
+            onChange={handlePhotoUpload} 
+            className="hidden" 
+          />
         </div>
-        <button onClick={handleOpenHistory} className="w-full mt-1 py-3 rounded-xl font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition-colors shadow-sm flex justify-center items-center gap-2 text-[12px] cursor-pointer"><History size={16} /> មើលប្រវត្តិបង់ប្រាក់</button>
       </div>
-      <div className="p-4 bg-white border-t border-slate-100 flex gap-2">
-        <button onClick={handleUpdate} className="flex-1 bg-[#5252d6] text-white font-bold py-3 rounded-xl hover:bg-indigo-700 flex justify-center items-center gap-2 cursor-pointer shadow-md text-[13px] transition-colors"><Save size={16} /> រក្សាទុក</button>
-        <button onClick={() => window.print()} className="flex-1 bg-[#0ea5e9] text-white font-bold py-3 rounded-xl hover:bg-sky-500 flex justify-center items-center gap-2 cursor-pointer shadow-md text-[13px] transition-colors"><Printer size={16} /> បោះពុម្ព</button>
+
+      {/* ព័ត៌មានស្នូល */}
+      <div className="mt-4 space-y-3 text-xs font-bold text-slate-600">
+        <div>
+          <label className="text-slate-400 block mb-1">លេខកូដផ្ទះ៖</label>
+          <input 
+            type="text" 
+            value={editForm.custom_id} 
+            onChange={e => setEditForm({ ...editForm, custom_id: e.target.value })}
+            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 font-black outline-none focus:border-indigo-500"
+          />
+        </div>
+
+        <div>
+          <label className="text-slate-400 block mb-1">ឈ្មោះអតិថិជន (ម្ចាស់ផ្ទះ/សំអាង)៖</label>
+          <input 
+            type="text" 
+            value={editForm.customer_name} 
+            onChange={e => setEditForm({ ...editForm, customer_name: e.target.value })}
+            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 font-bold outline-none focus:border-indigo-500"
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-slate-400 block mb-1">តម្លៃសេវា (៛)៖</label>
+            <input 
+              type="number" 
+              value={editForm.monthly_fee} 
+              onChange={e => setEditForm({ ...editForm, monthly_fee: e.target.value })}
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-emerald-600 font-black outline-none focus:border-indigo-500"
+            />
+          </div>
+          <div>
+            <label className="text-slate-400 block mb-1">តំបន់ (Zone)៖</label>
+            <input 
+              type="text" 
+              value={editForm.zone} 
+              onChange={e => setEditForm({ ...editForm, zone: e.target.value })}
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-700 font-bold outline-none focus:border-indigo-500"
+            />
+          </div>
+        </div>
       </div>
+
+      {/* ផ្នែកបង់ប្រាក់រហ័ស (Quick Pay) */}
+      <div className="mt-4 p-3.5 bg-indigo-50/60 rounded-2xl border border-indigo-100">
+        <div className="flex justify-between items-center mb-2">
+          <span className="text-xs font-black text-indigo-900 flex items-center gap-1">
+            <DollarSign size={14} className="text-indigo-600" /> បង់ប្រាក់
+          </span>
+          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+            selectedHome.status_color === 'blue' ? 'bg-blue-100 text-blue-700' :
+            selectedHome.status_color === 'red' ? 'bg-rose-100 text-rose-700' :
+            'bg-amber-100 text-amber-700'
+          }`}>
+            {selectedHome.status_color === 'blue' ? 'បានបង់រួច' : 'រង់ចាំបង់'}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 mb-2">
+          <select 
+            value={payMonth} 
+            onChange={e => setPayMonth(e.target.value)}
+            className="bg-white border border-indigo-200 text-indigo-900 text-xs font-bold rounded-xl px-2 py-2 outline-none"
+          >
+            {KHMER_MONTHS.map(m => (
+              <option key={m} value={m}>{m}</option>
+            ))}
+          </select>
+
+          <select 
+            value={payNumMonths} 
+            onChange={e => setPayNumMonths(e.target.value)}
+            className="bg-white border border-indigo-200 text-indigo-900 text-xs font-bold rounded-xl px-2 py-2 outline-none"
+          >
+            <option value={1}>១ ខែ</option>
+            <option value={2}>២ ខែ</option>
+            <option value={3}>៣ ខែ</option>
+            <option value={6}>៦ ខែ</option>
+            <option value={12}>១ ឆ្នាំ (១២ ខែ)</option>
+          </select>
+        </div>
+
+        <button 
+          onClick={handleQuickPay}
+          className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-xl font-black text-xs shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+        >
+          <CheckCircle2 size={16} />
+          <span>កត់ត្រាការបង់ប្រាក់</span>
+        </button>
+      </div>
+
+      {/* ជម្រើសកែប្រែដោយដៃ & មើលប្រវត្តិ */}
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <button 
+          onClick={() => setIsManualEditOpen(!isManualEditOpen)}
+          className="bg-slate-100 hover:bg-slate-200 text-slate-700 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer"
+        >
+          <SlidersHorizontal size={14} /> Manual Edit
+        </button>
+        <button 
+          onClick={handleOpenHistory}
+          className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer"
+        >
+          <History size={14} /> ប្រវត្តិបង់ប្រាក់
+        </button>
+      </div>
+
+      {/* ផ្ទាំង Manual Edit បើកលាត */}
+      {isManualEditOpen && (
+        <div className="mt-3 p-3 bg-slate-50 rounded-2xl border border-slate-200 space-y-2 text-xs font-bold">
+          <div>
+            <label className="text-slate-400 block mb-1">ខែត្រូវបង់៖</label>
+            <select 
+              value={editForm.payment_month}
+              onChange={e => setEditForm({ ...editForm, payment_month: e.target.value })}
+              className="w-full bg-white border border-slate-200 rounded-xl p-2 outline-none"
+            >
+              {KHMER_MONTHS.map(m => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="text-slate-400 block mb-1">ស្ថានភាពពណ៌៖</label>
+            <select 
+              value={editForm.status_color}
+              onChange={e => setEditForm({ ...editForm, status_color: e.target.value })}
+              className="w-full bg-white border border-slate-200 rounded-xl p-2 outline-none font-bold"
+            >
+              <option value="yellow">🟡 រង់ចាំបង់ (លឿង)</option>
+              <option value="blue">🔵 បានបង់ (ខៀវ)</option>
+              <option value="red">🔴 បិទផ្អាក (ក្រហម)</option>
+              <option value="black">⚫ មិនទាន់ចុះឈ្មោះ (ខ្មៅ)</option>
+            </select>
+          </div>
+        </div>
+      )}
+
+      {/* ប៊ូតុង រក្សាទុក & បោះពុម្ព */}
+      <div className="mt-4 grid grid-cols-2 gap-2 pt-3 border-t border-slate-100">
+        <button 
+          onClick={handleUpdate}
+          className="bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 shadow-md cursor-pointer transition-all"
+        >
+          <Save size={15} /> រក្សាទុក
+        </button>
+        <button 
+          onClick={() => window.print()}
+          className="bg-slate-800 hover:bg-slate-900 text-white py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 shadow-md cursor-pointer transition-all"
+        >
+          <Printer size={15} /> បោះពុម្ព
+        </button>
+      </div>
+
     </div>
   );
 }
