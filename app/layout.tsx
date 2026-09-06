@@ -2,8 +2,14 @@ import type { Metadata } from "next";
 import "./globals.css"; // 🚀 នេះហើយខ្សែភ្លើងដែលតភ្ជាប់ពណ៌!
 
 export const metadata: Metadata = {
-  title: "Maps Ark Modern",
-  description: "ប្រព័ន្ធគ្រប់គ្រង Maps Ark ជំនាន់ថ្មី",
+  title: 'Maps Ark',
+  description: 'GIS Field Management',
+  manifest: '/manifest.json',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'Maps Ark',
+  },
 };
 
 export default function RootLayout({

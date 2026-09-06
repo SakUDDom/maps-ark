@@ -7,7 +7,7 @@ import '@geoman-io/leaflet-geoman-free';
 import { 
   MapPin, Eraser, Hexagon, Scissors, RotateCw, Search, Slash, Move, 
   LogIn, LogOut, PieChart, Ban, X, Spline, Map as MapIcon, 
-  Road, Monitor, Smartphone, Navigation, Loader2, Layers, Building 
+  Road, Monitor, Smartphone, Navigation, Loader2, Layers, Building, Shield 
 } from 'lucide-react';
 import { supabaseClient } from '../utils/supabase';
 import { KHMER_MONTHS } from '../constants/months';
@@ -19,7 +19,7 @@ import ReportDashboard from './ReportDashboard';
 import HistoryModal from './HistoryModal';
 import RoadEditModal from './RoadEditModal';
 import UserManagementModal from './UserManagementModal';
-import { Shield } from 'lucide-react'; // ប្រសិនបើខាងលើមិនទាន់មាន Shield
+
 function isPointInPoly(point: [number, number], vs: Array<[number, number]>) {
   if (!vs || vs.length === 0) return false;
   const x = point[0], y = point[1];
@@ -99,6 +99,7 @@ export default function Map() {
   const [currentUser, setCurrentUser] = useState<any>(null); 
   const [showLoginModal, setShowLoginModal] = useState(true);
   const [deviceChoice, setDeviceChoice] = useState<'pc' | 'mobile' | null>(null); 
+  const [userModalOpen, setUserModalOpen] = useState(false);
 
   const [isMapReady, setIsMapReady] = useState(false);
   const [isFetchingData, setIsFetchingData] = useState(false);
@@ -125,7 +126,7 @@ export default function Map() {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
 
-  // All Default OFF
+  // Default OFF Layers
   const [pointToggle, setPointToggle] = useState(false);
   const [polygonToggle, setPolygonToggle] = useState(false);
   const [roadToggle, setRoadToggle] = useState(false);
@@ -137,7 +138,6 @@ export default function Map() {
   const deviceChoiceRef = useRef<'pc' | 'mobile' | null>(null);
   const hasFetchedRef = useRef(false);
 
-  const [userModalOpen, setUserModalOpen] = useState(false);
   useEffect(() => { currentUserRef.current = currentUser; }, [currentUser]);
   useEffect(() => { deviceChoiceRef.current = deviceChoice; }, [deviceChoice]);
   useEffect(() => { allDataRef.current = allData; }, [allData]);
@@ -196,7 +196,7 @@ export default function Map() {
     }
   }, [currentUser, isMapReady]);
 
-  // 🚀 GPS Live Location សម្រាប់ Mobile
+  // GPS Live Location សម្រាប់ Mobile
   useEffect(() => {
     if (deviceChoice === 'mobile' && mapInstance.current) {
         mapInstance.current.locate({ watch: true, enableHighAccuracy: true, setView: false });
@@ -560,15 +560,18 @@ export default function Map() {
 
   useEffect(() => {
     delete (L.Icon.Default.prototype as any)._getIconUrl;
-    L.Icon.Default.mergeOptions({ iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png', iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png', shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png' });
+    L.Icon.Default.mergeOptions({ 
+      iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png', 
+      iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png', 
+      shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png' 
+    });
 
     if (typeof window !== 'undefined' && mapRef.current && !mapInstance.current) {
-      // 🚀 Native Smooth Scrolling & High Touch Tolerance
       mapInstance.current = L.map(mapRef.current, { 
         zoomControl: false, 
         preferCanvas: false,
         doubleClickZoom: false,
-        clickTolerance: 30, // ងាយប៉ះលើ Mobile
+        clickTolerance: 30,
         maxZoom: 22,
         bounceAtZoomLimits: false,
         inertia: true,
@@ -588,7 +591,12 @@ export default function Map() {
           pmInstance.setGlobalOptions({ pmIgnore: false } as any);
         }
         if (typeof pmInstance.addControls === 'function') {
-          pmInstance.addControls({ drawMarker: false, drawCircleMarker: false, drawPolyline: false, drawRectangle: false, drawPolygon: false, drawCircle: false, drawText: false, editMode: false, dragMode: false, cutPolygon: false, removalMode: false, rotateMode: false } as any);
+          pmInstance.addControls({ 
+            drawMarker: false, drawCircleMarker: false, drawPolyline: false, 
+            drawRectangle: false, drawPolygon: false, drawCircle: false, 
+            drawText: false, editMode: false, dragMode: false, 
+            cutPolygon: false, removalMode: false, rotateMode: false 
+          } as any);
         }
       }
 
@@ -752,7 +760,7 @@ export default function Map() {
     }
   }, []);
 
-  // គ្រប់គ្រង Toggle Layers
+  // Sync Toggle Layers
   useEffect(() => {
     if (mapInstance.current && pointsLayer.current) {
       if (pointToggle) {
@@ -803,7 +811,14 @@ export default function Map() {
     }
   }, [adminBorderToggle]);
 
-  const checkPermission = () => { if (!currentUserRef.current) { alert('🔒 សូមចុច "ចូលគណនី" (Login) ជាមុនសិន!'); setShowLoginModal(true); return false; } return true; };
+  const checkPermission = () => { 
+    if (!currentUserRef.current) { 
+      alert('🔒 សូមចុច "ចូលគណនី" (Login) ជាមុនសិន!'); 
+      setShowLoginModal(true); 
+      return false; 
+    } 
+    return true; 
+  };
 
   const drawPoint = () => { 
     if(checkPermission()){ 
@@ -926,7 +941,7 @@ export default function Map() {
       setIsUploading(true);
       const compressedFile = await compressImage(file);
       
-      const safeId = selectedHome.custom_id.replace(/[^a-zA-Z0-9]/g, ''); 
+      const safeId = selectedHome.custom_id ? selectedHome.custom_id.replace(/[^a-zA-Z0-9]/g, '') : 'home'; 
       const fileName = `${safeId}_${Date.now()}.jpg`;
 
       const { error } = await supabaseClient.storage
@@ -940,8 +955,20 @@ export default function Map() {
         .getPublicUrl(fileName);
 
       const newPhotoUrl = `${publicUrlData.publicUrl}?t=${Date.now()}`;
-      setEditForm({ ...editForm, photo_url: newPhotoUrl });
-      
+      setEditForm((prev: any) => ({ ...prev, photo_url: newPhotoUrl }));
+
+      await supabaseClient
+        .from('households')
+        .update({ photo_url: newPhotoUrl })
+        .eq('id', selectedHome.id);
+
+      setAllData((prev) =>
+        prev.map((item) =>
+          item.id === selectedHome.id ? { ...item, photo_url: newPhotoUrl } : item
+        )
+      );
+
+      alert('✅ រូបភាពត្រូវបានរក្សាទុកដោយជោគជ័យ!');
     } catch (error: any) {
       alert('❌ បរាជ័យក្នុងការបញ្ចូលរូបភាព៖ ' + error.message);
     } finally {
@@ -1011,7 +1038,11 @@ export default function Map() {
     const nextMonthIdx = (lastPaidMonthIndex + 1) % 12; 
     const nextMonthStr = KHMER_MONTHS[nextMonthIdx];
     
-    const { error } = await supabaseClient.from('households').update({ status_color: 'blue', payment_month: nextMonthStr, photo_url: editForm.photo_url }).eq('id', selectedHome.id);
+    const { error } = await supabaseClient.from('households').update({ 
+      status_color: 'blue', 
+      payment_month: nextMonthStr, 
+      photo_url: editForm.photo_url 
+    }).eq('id', selectedHome.id);
 
     if (!error) {
       alert('✅ ការបង់ប្រាក់ទទួលបានជោគជ័យ!'); 
@@ -1024,6 +1055,24 @@ export default function Map() {
       } else {
         setPaymentsData(prev => [...recordsToInsert, ...prev]);
       }
+
+      // 🚀 ផ្ញើសារជូនដំណឹងស្វ័យប្រវត្តិតាម Telegram Bot Alert
+      fetch('/api/telegram-alert', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customId: selectedHome.custom_id,
+          customerName: selectedHome.customer_name,
+          amount: feeAmount * loopCount,
+          paidMonth: payMonth,
+          numMonths: loopCount,
+          zone: selectedHome.zone,
+          collector: currentUserRef.current?.name || currentUserRef.current?.email || '',
+        }),
+      })
+      .then(res => res.json())
+      .then(data => console.log('Telegram Alert Response:', data))
+      .catch(err => console.error("Telegram alert failed:", err));
 
       setSelectedHome(null); 
     } else { alert(`❌ បរាជ័យក្នុងការ Update ស្ថានភាពផ្ទះ! Error: ${error.message}`); }
@@ -1269,6 +1318,14 @@ export default function Map() {
             )}
             </div>
             <div className="flex gap-2 sm:gap-4 items-center">
+            {currentUser?.role === 'super_admin' && (
+              <button 
+                onClick={() => setUserModalOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-purple-700 bg-purple-50 border border-purple-200 hover:bg-purple-100 rounded-xl transition-all shadow-sm cursor-pointer"
+              >
+                <Shield size={15} /> គ្រប់គ្រងភ្នាក់ងារ
+              </button>
+            )}
             {activeView === 'map' ? (
                 <button onClick={openReport} className="flex items-center gap-1 sm:gap-2 px-3 sm:px-5 py-2 text-[11px] sm:text-sm font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl transition-all shadow-sm cursor-pointer"><PieChart size={16} className="text-indigo-600" /> <span className="hidden sm:inline">របាយការណ៍</span></button>
             ) : (
@@ -1279,9 +1336,6 @@ export default function Map() {
             ) : (
                 <button onClick={() => setShowLoginModal(true)} className="flex items-center gap-1 sm:gap-2 px-3 sm:px-5 py-2 text-[11px] sm:text-sm font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-xl transition-all shadow-sm border border-indigo-200 cursor-pointer"><LogIn size={16} /> <span className="hidden sm:inline">ចូល</span></button>
             )}
-            {currentUser?.role === 'super_admin' && (
-               <button onClick={() => setUserModalOpen(true)} className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-purple-700 bg-purple-50 border border-purple-200 hover:bg-purple-100 rounded-xl transition-all shadow-sm cursor-pointer"> <Shield size={15} /> គ្រប់គ្រងភ្នាក់ងារ</button>
-            )}
             </div>
         </header>
 
@@ -1290,7 +1344,6 @@ export default function Map() {
             <button onClick={() => setIsToolsPanelOpen(true)} className="absolute top-[80px] left-4 z-[1000] bg-white p-3 sm:p-3.5 rounded-2xl shadow-xl border border-slate-200 hover:bg-slate-50 transition-all cursor-pointer text-indigo-600 flex items-center justify-center hover:scale-105" title="បើកផ្ទាំងបញ្ជា"><Layers size={22} /></button>
             )}
 
-            {/* 🚀 Mobile Action Button (Live Location) */}
             {deviceChoice === 'mobile' && !isToolsPanelOpen && (
               <div className="absolute top-[140px] left-4 z-[1000] flex flex-col gap-2">
                 <button onClick={handleLocateMe} className="bg-blue-600 p-3.5 rounded-2xl shadow-xl border border-blue-700 hover:bg-blue-700 transition-all cursor-pointer text-white flex items-center justify-center hover:scale-105 active:scale-95" title="ទីតាំងរបស់ខ្ញុំ"><Navigation size={22} /></button>
@@ -1413,14 +1466,12 @@ export default function Map() {
 
             </div>
             
-            {/* 🚀 ផ្ទៃផែនទី Native 100% គ្មាន Scale/Rotation ធ្វើឱ្យ Scrolling & Touch រលូនលើ Mobile */}
             <main className="flex-1 relative z-0 h-full bg-slate-900 overflow-hidden">
               <div 
                 ref={mapRef} 
                 className="w-full h-full touch-pan-x touch-pan-y" 
               />
             </main>
-            
         </div>
 
         <CustomerDetail
@@ -1507,7 +1558,7 @@ export default function Map() {
           setRoadEditData={setRoadEditData}
           onSave={saveRoadData}
         />
-        {/* 🚀 ដាក់នៅត្រង់នេះ (មុន </div> ចុងក្រោយ) */}
+
         <UserManagementModal 
           isOpen={userModalOpen}
           onClose={() => setUserModalOpen(false)}

@@ -1,16 +1,16 @@
-import type { NextConfig } from "next";
+import type { NextConfig } from 'next';
+import withPWAInit from '@ducanh2912/next-pwa';
+
+const withPWA = withPWAInit({
+  dest: 'public',
+  disable: process.env.NODE_ENV === 'development',
+  register: true,
+  skipWaiting: true,
+});
 
 const nextConfig: NextConfig = {
-  // @ts-expect-error
-  swcMinify: false,
-  eslint: {
-    // បិទការឆែក ESLint ពេល Build ដើម្បីកុំឱ្យស៊ី RAM Vercel គាំង
-    ignoreDuringBuilds: true,
-  },
-  typescript: {
-    // បិទការឆែក TypeScript ពេល Build ដូចគ្នា
-    ignoreBuildErrors: true,
-  },
+  reactStrictMode: false,
+  turbopack: {}, // 🚀 បន្ថែមបន្ទាត់នេះដើម្បី silence error របស់ Turbopack
 };
 
-export default nextConfig;
+export default withPWA(nextConfig);
