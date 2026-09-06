@@ -324,9 +324,9 @@ export default function Map() {
         weight: 1.5, 
         fillOpacity: 0.95
       });
-      pointMarker.options.dbId = h.id;
-      pointMarker.options.dbType = 'household';
-      pointMarker.options.pmIgnore = false;
+      (pointMarker.options as any).dbId = h.id;
+      (pointMarker.options as any).dbType = 'household';
+      (pointMarker.options as any).pmIgnore = false;
       pointMarker.on('click', () => handleSelectHousehold(h));
       pointMarker.on('pm:dragend', () => handleLayerUpdate(pointMarker));
       if (pointsLayer.current) pointMarker.addTo(pointsLayer.current);
