@@ -1131,7 +1131,7 @@ export default function Map() {
         setPaymentsData(prev => [...recordsToInsert, ...prev]);
       }
 
-      // 🚀 Await Telegram Alert និងបង្ហាញ Alert បើបរាជ័យ
+      // 🚀 បញ្ជូនដំណឹងទៅ Telegram Bot ជាមួយ Error Alert ជាក់ស្ដែង
       try {
         const tgRes = await fetch('/api/telegram-alert', {
           method: 'POST',
@@ -1152,16 +1152,19 @@ export default function Map() {
         });
 
         const tgResult = await tgRes.json();
-        
         if (!tgRes.ok || !tgResult.success) {
-          alert(`⚠️ Bot មិនដំណើរការ: ${tgResult.error || JSON.stringify(tgResult.tgData || tgResult)}`);
+          alert(`⚠️ Telegram Bot Notice: ${tgResult.error || JSON.stringify(tgResult)}`);
         }
       } catch (tgErr: any) {
-        alert(`❌ Network Error ទៅកាន់ Bot API: ${tgErr.message}`);
+        alert(`❌ Network Error ទៅកាន់ Bot: ${tgErr.message}`);
       }
 
       alert('✅ ការបង់ប្រាក់ទទួលបានជោគជ័យ!'); 
-      setSelectedHome(null);
+      setSelectedHome(null); 
+    } else { 
+      alert(`❌ បរាជ័យក្នុងការ Update ស្ថានភាពផ្ទះ! Error: ${error.message}`); 
+    }
+  };
 
   const handleOpenHistory = async () => {
     if (!selectedHome) return;
