@@ -7,10 +7,12 @@ import '@geoman-io/leaflet-geoman-free';
 import { 
   MapPin, Eraser, Hexagon, Scissors, RotateCw, Search, Slash, Move, 
   LogIn, LogOut, PieChart, Ban, X, Spline, Map as MapIcon, 
-  Road, Monitor, Smartphone, Navigation, Loader2, Layers, Building, Shield 
+  Road, Monitor, Smartphone, Navigation, Loader2, Layers, Building, Shield,
+  Route as RouteIcon
 } from 'lucide-react';
 import { supabaseClient } from '../utils/supabase';
 import { KHMER_MONTHS } from '../constants/months';
+import { optimizeRouteOrder, fetchOSRMRoute, PointCoord } from '../utils/routing';
 
 import LoginModal from './LoginModal';
 import BillPrint from './BillPrint';
@@ -89,6 +91,10 @@ export default function Map() {
   const zoneBordersLayer = useRef<L.FeatureGroup | null>(null);
   const adminBordersLayer = useRef<L.FeatureGroup | null>(null);
   
+  const smartRouteLayer = useRef<L.GeoJSON | null>(null);
+  const [isRoutingActive, setIsRoutingActive] = useState(false);
+  const [isCalculatingRoute, setIsCalculatingRoute] = useState(false);
+
   const locationMarkerRef = useRef<L.Marker | null>(null);
   const locationAccuracyRef = useRef<L.Circle | null>(null);
   const hasCenteredGPSRef = useRef<boolean>(false);
@@ -253,6 +259,76 @@ export default function Map() {
     }
   };
 
+  const handleSmartRouting = async () => {
+    if (!mapInstance.current) return;
+
+    if (isRoutingActive) {
+      if (smartRouteLayer.current) {
+        mapInstance.current.removeLayer(smartRouteLayer.current);
+        smartRouteLayer.current = null;
+      }
+      setIsRoutingActive(false);
+      return;
+    }
+
+    let startLoc = locationMarkerRef.current?.getLatLng();
+    if (!startLoc) {
+      startLoc = mapInstance.current.getCenter();
+    }
+
+    const pendingHouses: PointCoord[] = allDataRef.current
+      .filter((h: any) => {
+        const isMyZone = currentUserRef.current?.role === 'super_admin' || h.zone === currentUserRef.current?.zone;
+        return isMyZone && h.status_color === 'yellow' && h.lat && h.lng;
+      })
+      .map((h: any) => ({
+        id: h.id,
+        custom_id: h.custom_id,
+        lat: Number(h.lat),
+        lng: Number(h.lng),
+      }));
+
+    if (pendingHouses.length === 0) {
+      alert('🎉 មិនមានផ្ទះជំពាក់ប្រាក់ (ពណ៌លឿង) នៅក្នុងតំបន់របស់អ្នកឡើយ!');
+      return;
+    }
+
+    setIsCalculatingRoute(true);
+
+    const sortedStops = optimizeRouteOrder({ lat: startLoc.lat, lng: startLoc.lng }, pendingHouses, 15);
+
+    const routeCoordinates: Array<[number, number]> = [
+      [startLoc.lat, startLoc.lng],
+      ...sortedStops.map(s => [s.lat, s.lng] as [number, number])
+    ];
+
+    const routeGeoJSON = await fetchOSRMRoute(routeCoordinates);
+
+    if (routeGeoJSON) {
+      if (smartRouteLayer.current) {
+        mapInstance.current.removeLayer(smartRouteLayer.current);
+      }
+
+      smartRouteLayer.current = L.geoJSON(routeGeoJSON, {
+        style: {
+          color: '#8b5cf6',
+          weight: 6,
+          opacity: 0.85,
+          dashArray: '8, 8',
+          lineCap: 'round',
+        }
+      }).addTo(mapInstance.current);
+
+      mapInstance.current.fitBounds(smartRouteLayer.current.getBounds(), { padding: [50, 50] });
+      setIsRoutingActive(true);
+      alert(`🧭 បានតម្រៀបខ្សែផ្លូវប្រមូលប្រាក់សម្រាប់ ${sortedStops.length} ផ្ទះជិតបំផុត!`);
+    } else {
+      alert('❌ មិនអាចទាញយកទិន្នន័យផ្លូវថ្នល់បានទេ សូមសាកល្បងម្ដងទៀត!');
+    }
+
+    setIsCalculatingRoute(false);
+  };
+
   const handleSelectHousehold = async (h: any) => {
     if (isGeomanBusy()) return;
 
@@ -292,8 +368,8 @@ export default function Map() {
   };
 
   const handleLayerUpdate = async (layer: any) => {
-    const id = layer.options?.dbId || layer.options?.parentLayer?.options?.dbId;
-    const dbType = layer.options?.dbType || layer.options?.parentLayer?.options?.dbType;
+    const id = (layer.options as any)?.dbId || (layer.options as any)?.parentLayer?.options?.dbId;
+    const dbType = (layer.options as any)?.dbType || (layer.options as any)?.parentLayer?.options?.dbType;
     if (!id || !currentUserRef.current) return;
 
     const geojson = layer.toGeoJSON();
@@ -341,9 +417,9 @@ export default function Map() {
       (polyGroup as any).options.pmIgnore = false;
 
       polyGroup.eachLayer((subLayer: any) => { 
-        subLayer.options.dbId = h.id; 
-        subLayer.options.dbType = 'household';
-        subLayer.options.pmIgnore = false;
+        (subLayer.options as any).dbId = h.id; 
+        (subLayer.options as any).dbType = 'household';
+        (subLayer.options as any).pmIgnore = false;
         (subLayer as any).pmIgnore = false;
 
         subLayer.on('pm:edit', () => handleLayerUpdate(subLayer));
@@ -395,9 +471,9 @@ export default function Map() {
       (layer as any).options.pmIgnore = false;
 
       layer.eachLayer((l: any) => { 
-        l.options.dbId = r.id; 
-        l.options.dbType = 'road'; 
-        l.options.pmIgnore = false;
+        (l.options as any).dbId = r.id; 
+        (l.options as any).dbType = 'road'; 
+        (l.options as any).pmIgnore = false;
         (l as any).pmIgnore = false;
 
         l.on('pm:edit', () => handleLayerUpdate(l));
@@ -463,10 +539,10 @@ export default function Map() {
       (layer as any).options.pmIgnore = false;
 
       layer.eachLayer((l: any) => { 
-        l.options.dbId = b.id; 
-        l.options.dbType = 'border'; 
-        l.options.zoneName = b.zone;
-        l.options.pmIgnore = false;
+        (l.options as any).dbId = b.id; 
+        (l.options as any).dbType = 'border'; 
+        (l.options as any).zoneName = b.zone;
+        (l.options as any).pmIgnore = false;
         (l as any).pmIgnore = false;
 
         l.on('pm:edit', () => handleLayerUpdate(l));
@@ -484,7 +560,7 @@ export default function Map() {
               const savedZoneName = isAdmin ? ` Admin: ${newZoneName.trim()}` : newZoneName.trim();
               await supabaseClient.from('zone_borders').update({ zone: savedZoneName }).eq('id', b.id);
               b.zone = savedZoneName;
-              l.options.zoneName = savedZoneName;
+              (l.options as any).zoneName = savedZoneName;
               
               const updatedLabel = `${iconPrefix} ${newZoneName.trim()}`;
               layer.unbindTooltip();
@@ -698,7 +774,7 @@ export default function Map() {
             if (zoneBordersLayer.current) {
               zoneBordersLayer.current.eachLayer((bLayer: any) => {
                 const bData = bLayer.toGeoJSON ? bLayer.toGeoJSON() : bLayer.options?.geojson;
-                const bZone = bLayer.options?.zoneName || bData?.properties?.zone;
+                const bZone = (bLayer.options as any)?.zoneName || bData?.properties?.zone;
                 const polyCoords = extractPolyCoords(bData);
                 if (bZone && polyCoords && isPointInPoly([center.lng, center.lat], polyCoords)) {
                   autoZone = bZone.replace(' Admin:', '').trim();
@@ -732,8 +808,8 @@ export default function Map() {
         if (!currentUserRef.current) return; 
         
         const targetLayer = e.layer;
-        const id = targetLayer.options?.dbId || targetLayer.options?.parentLayer?.options?.dbId;
-        const dbType = targetLayer.options?.dbType || targetLayer.options?.parentLayer?.options?.dbType;
+        const id = (targetLayer.options as any)?.dbId || (targetLayer.options as any)?.parentLayer?.options?.dbId;
+        const dbType = (targetLayer.options as any)?.dbType || (targetLayer.options as any)?.parentLayer?.options?.dbType;
 
         if (!id) return;
 
@@ -919,15 +995,15 @@ export default function Map() {
 
   const updateMarkerColorLocally = (id: string, colorHex: string) => {
     pointsLayer.current?.eachLayer((layer: any) => { 
-      if (layer.options?.dbId === id) layer.setStyle({ fillColor: colorHex }); 
+      if ((layer.options as any)?.dbId === id) layer.setStyle({ fillColor: colorHex }); 
     });
 
     polygonsLayer.current?.eachLayer((group: any) => { 
       if (group.eachLayer) {
         group.eachLayer((sub: any) => {
-          if (sub.options?.dbId === id) sub.setStyle({ fillColor: colorHex });
+          if ((sub.options as any)?.dbId === id) sub.setStyle({ fillColor: colorHex });
         });
-      } else if (group.options?.dbId === id) {
+      } else if ((group.options as any)?.dbId === id) {
         group.setStyle({ fillColor: colorHex });
       }
     });
@@ -1056,7 +1132,6 @@ export default function Map() {
         setPaymentsData(prev => [...recordsToInsert, ...prev]);
       }
 
-      // 🚀 ផ្ញើសារជូនដំណឹងស្វ័យប្រវត្តិតាម Telegram Bot Alert
       fetch('/api/telegram-alert', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1146,7 +1221,7 @@ export default function Map() {
           }).eq('id', roadEditData.id).select().single();
           if (data) { 
             roadsLayer.current?.eachLayer((l: any) => { 
-              if(l.options.dbId === roadEditData.id) roadsLayer.current?.removeLayer(l); 
+              if((l.options as any).dbId === roadEditData.id) roadsLayer.current?.removeLayer(l); 
             }); 
             addRoadToMap(data); 
           }
@@ -1203,7 +1278,7 @@ export default function Map() {
         let colorHex = val === 'blue' ? '#2563eb' : val === 'red' ? '#dc2626' : val === 'black' ? '#020617' : '#f59e0b';
         
         pointsLayer.current?.eachLayer((layer: any) => {
-            const h = allDataRef.current.find(d => d.id === layer.options.dbId);
+            const h = allDataRef.current.find(d => d.id === (layer.options as any).dbId);
             if (h && (currentUserRef.current.role === 'super_admin' ? (reportZone ? h.zone === reportZone : true) : h.zone === currentUserRef.current.name)) {
                 layer.setStyle({ fillColor: colorHex });
             }
@@ -1211,7 +1286,7 @@ export default function Map() {
         polygonsLayer.current?.eachLayer((group: any) => {
             if (group.eachLayer) {
               group.eachLayer((sub: any) => {
-                const h = allDataRef.current.find(d => d.id === sub.options?.dbId);
+                const h = allDataRef.current.find(d => d.id === (sub.options as any)?.dbId);
                 if (h && (currentUserRef.current.role === 'super_admin' ? (reportZone ? h.zone === reportZone : true) : h.zone === currentUserRef.current.name)) {
                   sub.setStyle({ fillColor: colorHex });
                 }
@@ -1344,11 +1419,33 @@ export default function Map() {
             <button onClick={() => setIsToolsPanelOpen(true)} className="absolute top-[80px] left-4 z-[1000] bg-white p-3 sm:p-3.5 rounded-2xl shadow-xl border border-slate-200 hover:bg-slate-50 transition-all cursor-pointer text-indigo-600 flex items-center justify-center hover:scale-105" title="បើកផ្ទាំងបញ្ជា"><Layers size={22} /></button>
             )}
 
-            {deviceChoice === 'mobile' && !isToolsPanelOpen && (
-              <div className="absolute top-[140px] left-4 z-[1000] flex flex-col gap-2">
-                <button onClick={handleLocateMe} className="bg-blue-600 p-3.5 rounded-2xl shadow-xl border border-blue-700 hover:bg-blue-700 transition-all cursor-pointer text-white flex items-center justify-center hover:scale-105 active:scale-95" title="ទីតាំងរបស់ខ្ញុំ"><Navigation size={22} /></button>
-              </div>
-            )}
+            {/* ប៊ូតុង GPS និង Route Optimization */}
+            <div className="absolute top-[140px] left-4 z-[1000] flex flex-col gap-2">
+              {deviceChoice === 'mobile' && !isToolsPanelOpen && (
+                <button 
+                  onClick={handleLocateMe} 
+                  className="bg-blue-600 p-3.5 rounded-2xl shadow-xl border border-blue-700 hover:bg-blue-700 transition-all cursor-pointer text-white flex items-center justify-center hover:scale-105 active:scale-95" 
+                  title="ទីតាំងរបស់ខ្ញុំ"
+                >
+                  <Navigation size={22} />
+                </button>
+              )}
+
+              {!isToolsPanelOpen && (
+                <button
+                  onClick={handleSmartRouting}
+                  disabled={isCalculatingRoute}
+                  className={`p-3.5 rounded-2xl shadow-xl border transition-all cursor-pointer flex items-center justify-center hover:scale-105 active:scale-95 ${
+                    isRoutingActive 
+                      ? 'bg-purple-600 border-purple-700 text-white animate-pulse' 
+                      : 'bg-white border-slate-200 text-purple-600 hover:bg-purple-50'
+                  }`}
+                  title={isRoutingActive ? 'បិទខ្សែផ្លូវ' : 'តម្រង់ផ្លូវប្រមូលប្រាក់ឆ្លាតវៃ'}
+                >
+                  {isCalculatingRoute ? <Loader2 className="animate-spin" size={22} /> : <RouteIcon size={22} />}
+                </button>
+              )}
+            </div>
 
             <div className={`absolute top-[80px] left-4 z-[1050] w-[calc(100vw-32px)] sm:w-[340px] flex flex-col gap-4 transition-all duration-300 transform ${isToolsPanelOpen ? 'translate-x-0 opacity-100 pointer-events-auto' : '-translate-x-[400px] opacity-0 pointer-events-none'} hide-scrollbar overflow-y-auto max-h-[calc(100vh-100px)] pb-6`}>
             <div className="bg-white/90 backdrop-blur-xl border border-white shadow-lg rounded-2xl p-3 flex items-center gap-2">
