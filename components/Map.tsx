@@ -18,7 +18,8 @@ import CustomerDetail from './CustomerDetail';
 import ReportDashboard from './ReportDashboard';
 import HistoryModal from './HistoryModal';
 import RoadEditModal from './RoadEditModal';
-
+import UserManagementModal from './UserManagementModal';
+import { Shield } from 'lucide-react'; // ប្រសិនបើខាងលើមិនទាន់មាន Shield
 function isPointInPoly(point: [number, number], vs: Array<[number, number]>) {
   if (!vs || vs.length === 0) return false;
   const x = point[0], y = point[1];
@@ -136,6 +137,7 @@ export default function Map() {
   const deviceChoiceRef = useRef<'pc' | 'mobile' | null>(null);
   const hasFetchedRef = useRef(false);
 
+  const [userModalOpen, setUserModalOpen] = useState(false);
   useEffect(() => { currentUserRef.current = currentUser; }, [currentUser]);
   useEffect(() => { deviceChoiceRef.current = deviceChoice; }, [deviceChoice]);
   useEffect(() => { allDataRef.current = allData; }, [allData]);
@@ -1277,6 +1279,9 @@ export default function Map() {
             ) : (
                 <button onClick={() => setShowLoginModal(true)} className="flex items-center gap-1 sm:gap-2 px-3 sm:px-5 py-2 text-[11px] sm:text-sm font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-xl transition-all shadow-sm border border-indigo-200 cursor-pointer"><LogIn size={16} /> <span className="hidden sm:inline">ចូល</span></button>
             )}
+            {currentUser?.role === 'super_admin' && (
+               <button onClick={() => setUserModalOpen(true)} className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-purple-700 bg-purple-50 border border-purple-200 hover:bg-purple-100 rounded-xl transition-all shadow-sm cursor-pointer"> <Shield size={15} /> គ្រប់គ្រងភ្នាក់ងារ</button>
+            )}
             </div>
         </header>
 
@@ -1415,6 +1420,7 @@ export default function Map() {
                 className="w-full h-full touch-pan-x touch-pan-y" 
               />
             </main>
+            
         </div>
 
         <CustomerDetail
@@ -1500,6 +1506,12 @@ export default function Map() {
           roadEditData={roadEditData}
           setRoadEditData={setRoadEditData}
           onSave={saveRoadData}
+        />
+        {/* 🚀 ដាក់នៅត្រង់នេះ (មុន </div> ចុងក្រោយ) */}
+        <UserManagementModal 
+          isOpen={userModalOpen}
+          onClose={() => setUserModalOpen(false)}
+          currentUser={currentUser}
         />
 
       </div>
