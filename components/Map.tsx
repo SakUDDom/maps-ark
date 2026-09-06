@@ -1103,7 +1103,7 @@ export default function Map() {
           year: targetYear, 
           status: 'paid', 
           zone: selectedHome.zone, 
-          collected_by: currentUserRef.current?.name || '', 
+          collected_by: currentUserRef.current?.name || currentUserRef.current?.email || 'San sakudom', 
           paid_at: now.toISOString() 
         });
     }
@@ -1121,7 +1121,6 @@ export default function Map() {
     }).eq('id', selectedHome.id);
 
     if (!error) {
-      alert('✅ ការបង់ប្រាក់ទទួលបានជោគជ័យ!'); 
       updateMarkerColorLocally(selectedHome.id, '#2563eb'); 
       const updatedHome = { ...selectedHome, status_color: 'blue', payment_month: nextMonthStr, photo_url: editForm.photo_url };
       setAllData(prev => prev.map(item => item.id === selectedHome.id ? updatedHome : item));
@@ -1132,25 +1131,34 @@ export default function Map() {
         setPaymentsData(prev => [...recordsToInsert, ...prev]);
       }
 
-      fetch('/api/telegram-alert', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          customId: selectedHome.custom_id,
-          customerName: selectedHome.customer_name,
-          amount: feeAmount * loopCount,
-          paidMonth: payMonth,
-          numMonths: loopCount,
-          zone: selectedHome.zone,
-          collector: currentUserRef.current?.name || currentUserRef.current?.email || '',
-        }),
-      })
-      .then(res => res.json())
-      .then(data => console.log('Telegram Alert Response:', data))
-      .catch(err => console.error("Telegram alert failed:", err));
+      // 🚀 Await Telegram Alert មុនពេលបិទ Modal
+      try {
+        await fetch('/api/telegram-alert', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            custom_id: selectedHome.custom_id,
+            customId: selectedHome.custom_id,
+            customer_name: selectedHome.customer_name,
+            customerName: selectedHome.customer_name,
+            amount: feeAmount * loopCount,
+            paid_month: payMonth,
+            paidMonth: payMonth,
+            num_months: loopCount,
+            numMonths: loopCount,
+            zone: selectedHome.zone || 'ទូទៅ',
+            collector: currentUserRef.current?.name || currentUserRef.current?.email || 'San sakudom',
+          }),
+        });
+      } catch (tgErr) {
+        console.error("Failed to send Telegram alert:", tgErr);
+      }
 
+      alert('✅ ការបង់ប្រាក់ទទួលបានជោគជ័យ!'); 
       setSelectedHome(null); 
-    } else { alert(`❌ បរាជ័យក្នុងការ Update ស្ថានភាពផ្ទះ! Error: ${error.message}`); }
+    } else { 
+      alert(`❌ បរាជ័យក្នុងការ Update ស្ថានភាពផ្ទះ! Error: ${error.message}`); 
+    }
   };
 
   const handleOpenHistory = async () => {
