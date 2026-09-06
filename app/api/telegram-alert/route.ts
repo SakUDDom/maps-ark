@@ -4,7 +4,6 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     
-    // ចាប់យកតម្លៃទោះជាផ្ញើមកជា snake_case ឬ camelCase
     const custom_id = body.custom_id || body.customId || 'N/A';
     const customer_name = body.customer_name || body.customerName || 'N/A';
     const amount = body.amount || 0;
@@ -17,8 +16,10 @@ export async function POST(request: Request) {
     const chatId = process.env.TELEGRAM_CHAT_ID;
 
     if (!botToken || !chatId) {
-      console.error('Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID');
-      return NextResponse.json({ error: 'Missing Telegram environment variables' }, { status: 500 });
+      return NextResponse.json({ 
+        success: false, 
+        error: `Missing ENV keys: botToken=${!!botToken}, chatId=${!!chatId}` 
+      }, { status: 500 });
     }
 
     const message = 
@@ -43,9 +44,17 @@ export async function POST(request: Request) {
     });
 
     const tgData = await tgRes.json();
+
+    if (!tgRes.ok || !tgData.ok) {
+      return NextResponse.json({ 
+        success: false, 
+        error: tgData.description || 'Telegram API rejected message', 
+        tgData 
+      }, { status: 400 });
+    }
+
     return NextResponse.json({ success: true, tgData });
   } catch (error: any) {
-    console.error('Telegram Alert API Error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }

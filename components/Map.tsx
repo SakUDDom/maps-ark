@@ -1131,9 +1131,9 @@ export default function Map() {
         setPaymentsData(prev => [...recordsToInsert, ...prev]);
       }
 
-      // 🚀 Await Telegram Alert មុនពេលបិទ Modal
+      // 🚀 Await Telegram Alert និងបង្ហាញ Alert បើបរាជ័យ
       try {
-        await fetch('/api/telegram-alert', {
+        const tgRes = await fetch('/api/telegram-alert', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -1150,16 +1150,18 @@ export default function Map() {
             collector: currentUserRef.current?.name || currentUserRef.current?.email || 'San sakudom',
           }),
         });
-      } catch (tgErr) {
-        console.error("Failed to send Telegram alert:", tgErr);
+
+        const tgResult = await tgRes.json();
+        
+        if (!tgRes.ok || !tgResult.success) {
+          alert(`⚠️ Bot មិនដំណើរការ: ${tgResult.error || JSON.stringify(tgResult.tgData || tgResult)}`);
+        }
+      } catch (tgErr: any) {
+        alert(`❌ Network Error ទៅកាន់ Bot API: ${tgErr.message}`);
       }
 
       alert('✅ ការបង់ប្រាក់ទទួលបានជោគជ័យ!'); 
-      setSelectedHome(null); 
-    } else { 
-      alert(`❌ បរាជ័យក្នុងការ Update ស្ថានភាពផ្ទះ! Error: ${error.message}`); 
-    }
-  };
+      setSelectedHome(null);
 
   const handleOpenHistory = async () => {
     if (!selectedHome) return;
