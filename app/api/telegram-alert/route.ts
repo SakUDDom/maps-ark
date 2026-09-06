@@ -3,43 +3,49 @@ import { NextResponse } from 'next/server';
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { customId, customerName, amount, paidMonth, numMonths, zone, collector } = body;
+    
+    // ចាប់យកតម្លៃទោះជាផ្ញើមកជា snake_case ឬ camelCase
+    const custom_id = body.custom_id || body.customId || 'N/A';
+    const customer_name = body.customer_name || body.customerName || 'N/A';
+    const amount = body.amount || 0;
+    const paid_month = body.paid_month || body.paidMonth || '';
+    const num_months = body.num_months || body.numMonths || 1;
+    const zone = body.zone || 'ទូទៅ';
+    const collector = body.collector || body.collected_by || 'San sakudom';
 
     const botToken = process.env.TELEGRAM_BOT_TOKEN;
     const chatId = process.env.TELEGRAM_CHAT_ID;
 
     if (!botToken || !chatId) {
-      console.error('❌ Missing Telegram ENV Keys in .env.local');
-      return NextResponse.json({ error: 'Missing Telegram ENV Keys' }, { status: 500 });
+      console.error('Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID');
+      return NextResponse.json({ error: 'Missing Telegram environment variables' }, { status: 500 });
     }
 
-    const formattedAmount = Number(amount || 0).toLocaleString();
-    const text = 
-`🔔 <b>ការបង់ប្រាក់ជោគជ័យ!</b> (Maps Ark)
+    const message = 
+`🔔 <b>ការបង់ប្រាក់ជោគជ័យ! (Maps Ark)</b>
 ━━━━━━━━━━━━━━━━━━━━
-🏠 <b>លេខកូដផ្ទះ:</b> <code>${customId || '---'}</code>
-👤 <b>ឈ្មោះអតិថិជន:</b> ${customerName || 'អតិថិជនទូទៅ'}
-💵 <b>ចំនួនទឹកប្រាក់:</b> <b>${formattedAmount} ៛</b>
-📅 <b>បង់សម្រាប់:</b> ${paidMonth} (${numMonths} ខែ)
-📍 <b>តំបន់ (Zone):</b> ${zone || 'មិនបញ្ជាក់'}
-👮‍♂️ <b>ភ្នាក់ងារប្រមូល:</b> <b>${collector || '---'}</b>
-⏰ ⏰ <b>កាលបរិច្ឆេទ:</b> ${new Date().toLocaleString('km-KH', { timeZone: 'Asia/Phnom_Penh' })}
-━━━━━━━━━━━━━━━━━━━━`;
+🏠 <b>លេខកូដផ្ទះ:</b> <code>${custom_id}</code>
+👤 <b>ឈ្មោះអតិថិជន:</b> ${customer_name}
+💵 <b>ចំនួនទឹកប្រាក់:</b> <b>${Number(amount).toLocaleString()} ៛</b>
+📅 <b>បង់សម្រាប់:</b> ${paid_month} (${num_months} ខែ)
+📍 <b>តំបន់ (Zone):</b> ${zone}
+👮‍♂️ <b>ភ្នាក់ងារប្រមូល:</b> ${collector}
+⏰ <b>កាលបរិច្ឆេទ:</b> ${new Date().toLocaleString('en-GB', { timeZone: 'Asia/Phnom_Penh' })}`;
 
-    const telegramRes = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+    const tgRes = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: chatId,
-        text: text,
+        text: message,
         parse_mode: 'HTML',
       }),
     });
 
-    const data = await telegramRes.json();
-    return NextResponse.json(data);
+    const tgData = await tgRes.json();
+    return NextResponse.json({ success: true, tgData });
   } catch (error: any) {
-    console.error('API Route Error:', error);
+    console.error('Telegram Alert API Error:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
