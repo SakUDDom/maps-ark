@@ -132,7 +132,6 @@ export default function Map() {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
 
-  // Default OFF Layers
   const [pointToggle, setPointToggle] = useState(false);
   const [polygonToggle, setPolygonToggle] = useState(false);
   const [roadToggle, setRoadToggle] = useState(false);
@@ -202,7 +201,7 @@ export default function Map() {
     }
   }, [currentUser, isMapReady]);
 
-  // GPS Live Location សម្រាប់ Mobile
+  // GPS Tracker សម្រាប់ Mobile
   useEffect(() => {
     if (deviceChoice === 'mobile' && mapInstance.current) {
         mapInstance.current.locate({ watch: true, enableHighAccuracy: true, setView: false });
@@ -391,20 +390,22 @@ export default function Map() {
     let colorHex = h.status_color === 'blue' ? '#2563eb' : h.status_color === 'red' ? '#dc2626' : h.status_color === 'black' ? '#020617' : '#f59e0b';
     const isMobile = deviceChoiceRef.current === 'mobile';
     
-    // 🔥 ដំឡើងទំហំ Point លើ Mobile ឱ្យឡើងដល់ 9 (ធំងាយចុច)
-    const pointRadius = isMobile ? 9 : 6;
+    // 🔥 ទំហំស្អាតសមល្មម៖ PC = 6px (មិនបាំងដំបូល) | Mobile = 8.5px (ស្រួលចុច)
+    const pointRadius = isMobile ? 8.5 : 6;
 
     if (h.shape_type === 'point' && h.lat && h.lng) {
       const pointMarker = L.circleMarker([h.lat, h.lng], { 
         radius: pointRadius, 
         fillColor: colorHex, 
         color: '#ffffff', 
-        weight: isMobile ? 2.5 : 1.5, 
-        fillOpacity: 0.95
+        weight: isMobile ? 2 : 1.5, 
+        fillOpacity: 0.95,
+        className: 'household-point-marker'
       });
       (pointMarker.options as any).dbId = h.id;
       (pointMarker.options as any).dbType = 'household';
       (pointMarker.options as any).pmIgnore = false;
+      
       pointMarker.on('click', () => handleSelectHousehold(h));
       pointMarker.on('pm:dragend', () => handleLayerUpdate(pointMarker));
       if (pointsLayer.current) pointMarker.addTo(pointsLayer.current);
@@ -649,7 +650,7 @@ export default function Map() {
         zoomControl: false, 
         preferCanvas: false,
         doubleClickZoom: false,
-        clickTolerance: 45, // 🔥 បង្កើន Touch Target ធំកុំឱ្យរអិលពេលប៉ះលើទូរស័ព្ទដៃ
+        clickTolerance: 30,
         maxZoom: 22,
         bounceAtZoomLimits: false,
         inertia: true,
@@ -838,7 +839,7 @@ export default function Map() {
     }
   }, []);
 
-  // Sync Toggle Layers
+  // Sync Layers
   useEffect(() => {
     if (mapInstance.current && pointsLayer.current) {
       if (pointToggle) {
@@ -1156,7 +1157,7 @@ export default function Map() {
         console.error("Telegram alert dispatch error:", tgErr);
       }
 
-      // បិទ Modal ភ្លាមដោយមិនបាច់រង់ចាំចុច Alert OK
+      // បិទផ្ទាំង Detail ភ្លាមៗដោយគ្មាន alert រំខាន
       setSelectedHome(null); 
     } else { 
       alert(`❌ បរាជ័យក្នុងការ Update ស្ថានភាពផ្ទះ! Error: ${error.message}`); 
@@ -1348,6 +1349,11 @@ export default function Map() {
         .live-location-dot { width: 14px; height: 14px; background-color: #2563eb; border: 3px solid white; border-radius: 50%; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 2; box-shadow: 0 2px 4px rgba(0,0,0,0.3); }
         .live-location-pulse { width: 40px; height: 40px; background-color: rgba(37, 99, 235, 0.4); border-radius: 50%; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1; animation: pulse 2s infinite ease-in-out; }
         @keyframes pulse { 0% { transform: translate(-50%, -50%) scale(0.5); opacity: 1; } 100% { transform: translate(-50%, -50%) scale(1.5); opacity: 0; } }
+
+        /* Point នៅស្ងៀមមួយកន្លែង ចុចចំភ្លាម មិនរត់គេចពី Mouse */
+        .household-point-marker {
+          cursor: pointer !important;
+        }
 
         .clear-tooltip-bg {
           background: transparent !important;
