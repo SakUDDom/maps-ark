@@ -390,14 +390,16 @@ export default function Map() {
   const addHouseholdToMap = (h: any) => {
     let colorHex = h.status_color === 'blue' ? '#2563eb' : h.status_color === 'red' ? '#dc2626' : h.status_color === 'black' ? '#020617' : '#f59e0b';
     const isMobile = deviceChoiceRef.current === 'mobile';
-    const pointRadius = isMobile ? 5 : 5.5;
+    
+    // 🔥 ដំឡើងទំហំ Point លើ Mobile ឱ្យឡើងដល់ 9 (ធំងាយចុច)
+    const pointRadius = isMobile ? 9 : 6;
 
     if (h.shape_type === 'point' && h.lat && h.lng) {
       const pointMarker = L.circleMarker([h.lat, h.lng], { 
         radius: pointRadius, 
         fillColor: colorHex, 
         color: '#ffffff', 
-        weight: 1.5, 
+        weight: isMobile ? 2.5 : 1.5, 
         fillOpacity: 0.95
       });
       (pointMarker.options as any).dbId = h.id;
@@ -647,7 +649,7 @@ export default function Map() {
         zoomControl: false, 
         preferCanvas: false,
         doubleClickZoom: false,
-        clickTolerance: 30,
+        clickTolerance: 45, // 🔥 បង្កើន Touch Target ធំកុំឱ្យរអិលពេលប៉ះលើទូរស័ព្ទដៃ
         maxZoom: 22,
         bounceAtZoomLimits: false,
         inertia: true,
@@ -1131,9 +1133,9 @@ export default function Map() {
         setPaymentsData(prev => [...recordsToInsert, ...prev]);
       }
 
-      // 🚀 បញ្ជូនដំណឹងទៅ Telegram Bot ជាមួយ Error Alert ជាក់ស្ដែង
+      // បាញ់ Telegram Alert ស្ងាត់ៗក្នុង Background
       try {
-        const tgRes = await fetch('/api/telegram-alert', {
+        fetch('/api/telegram-alert', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -1149,17 +1151,12 @@ export default function Map() {
             zone: selectedHome.zone || 'ទូទៅ',
             collector: currentUserRef.current?.name || currentUserRef.current?.email || 'San sakudom',
           }),
-        });
-
-        const tgResult = await tgRes.json();
-        if (!tgRes.ok || !tgResult.success) {
-          alert(`⚠️ Telegram Bot Notice: ${tgResult.error || JSON.stringify(tgResult)}`);
-        }
-      } catch (tgErr: any) {
-        alert(`❌ Network Error ទៅកាន់ Bot: ${tgErr.message}`);
+        }).catch(err => console.error("Telegram alert error:", err));
+      } catch (tgErr) {
+        console.error("Telegram alert dispatch error:", tgErr);
       }
 
-      alert('✅ ការបង់ប្រាក់ទទួលបានជោគជ័យ!'); 
+      // បិទ Modal ភ្លាមដោយមិនបាច់រង់ចាំចុច Alert OK
       setSelectedHome(null); 
     } else { 
       alert(`❌ បរាជ័យក្នុងការ Update ស្ថានភាពផ្ទះ! Error: ${error.message}`); 

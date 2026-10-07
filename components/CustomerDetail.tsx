@@ -116,7 +116,7 @@ export default function CustomerDetail({
         </div>
 
         <div>
-          <label className="text-slate-400 block mb-1">ឈ្មោះអតិថិជន (ម្ចាស់ផ្ទះ/សំអាង)៖</label>
+          <label className="text-slate-400 block mb-1">ឈ្មោះអតិថិជន (ម្ចាស់ផ្ទះ/ម្ចាស់អរគា)៖</label>
           <input 
             type="text" 
             value={editForm.customer_name} 
